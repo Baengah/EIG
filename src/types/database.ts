@@ -189,6 +189,36 @@ export type Database = {
         Insert: Omit<Database["public"]["Tables"]["documents"]["Row"], "id" | "created_at" | "updated_at" | "upload_date"> & { id?: string; upload_date?: string };
         Update: Partial<Database["public"]["Tables"]["documents"]["Insert"]>;
       };
+      bank_accounts: {
+        Row: {
+          id: string;
+          bank_name: string;
+          account_name: string;
+          account_number: string;
+          account_type: string | null;
+          currency: string;
+          sort_code: string | null;
+          is_active: boolean;
+          is_primary: boolean;
+          created_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["bank_accounts"]["Row"], "id" | "created_at"> & { id?: string };
+        Update: Partial<Database["public"]["Tables"]["bank_accounts"]["Insert"]>;
+      };
+      broker_accounts: {
+        Row: {
+          id: string;
+          broker_name: string;
+          account_number: string;
+          account_name: string;
+          currency: string;
+          is_active: boolean;
+          is_primary: boolean;
+          created_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["broker_accounts"]["Row"], "id" | "created_at"> & { id?: string };
+        Update: Partial<Database["public"]["Tables"]["broker_accounts"]["Insert"]>;
+      };
       portfolio_snapshots: {
         Row: {
           id: string;
@@ -292,6 +322,8 @@ export type Transaction = Database["public"]["Tables"]["transactions"]["Row"];
 export type StockPrice = Database["public"]["Tables"]["stock_prices"]["Row"];
 export type Document = Database["public"]["Tables"]["documents"]["Row"];
 export type PortfolioSnapshot = Database["public"]["Tables"]["portfolio_snapshots"]["Row"];
+export type BankAccount = Database["public"]["Tables"]["bank_accounts"]["Row"];
+export type BrokerAccount = Database["public"]["Tables"]["broker_accounts"]["Row"];
 export type HoldingWithValue = Database["public"]["Views"]["v_holdings_with_value"]["Row"];
 export type PortfolioSummary = Database["public"]["Views"]["v_portfolio_summary"]["Row"];
 export type ContributionStatus = Database["public"]["Views"]["v_contribution_status"]["Row"];

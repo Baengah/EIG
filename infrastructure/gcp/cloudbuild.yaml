@@ -1,0 +1,86 @@
+# GCP Cloud Build — CI/CD pipeline for EIG Platform
+# Triggered on push to main branch via GitHub integration
+
+steps:
+  # Step 1: Install dependencies
+  - name: "node:20"
+    entrypoint: npm
+    args: ["ci"]
+    id: install
+
+  # Step 2: Type check
+  - name: "node:20"
+    entrypoint: npm
+    args: ["run", "type-check"]
+    id: typecheck
+    waitFor: ["install"]
+
+  # Step 3: Build Next.js app
+  - name: "node:20"
+    entrypoint: npm
+    args: ["run", "build"]
+    id: build
+    env:
+      - "NEXT_PUBLIC_SUPABASE_URL=${_SUPABASE_URL}"
+      - "NEXT_PUBLIC_SUPABASE_ANON_KEY=${_SUPABASE_ANON_KEY}"
+      - "NEXT_PUBLIC_APP_URL=https://equityinvestmentgroup.club"
+    waitFor: ["typecheck"]
+
+  # Step 4: Build Docker image
+  - name: "gcr.io/cloud-builders/docker"
+    args:
+      - build
+      - "-t"
+      - "us-central1-docker.pkg.dev/${PROJECT_ID}/eig-platform/eig-web:${SHORT_SHA}"
+      - "-t"
+      - "us-central1-docker.pkg.dev/${PROJECT_ID}/eig-platform/eig-web:latest"
+      - "."
+    id: docker-build
+    waitFor: ["build"]
+
+  # Step 5: Push to Artifact Registry
+  - name: "gcr.io/cloud-builders/docker"
+    args:
+      - push
+      - "us-central1-docker.pkg.dev/${PROJECT_ID}/eig-platform/eig-web:${SHORT_SHA}"
+    id: docker-push
+    waitFor: ["docker-build"]
+
+  - name: "gcr.io/cloud-builders/docker"
+    args:
+      - push
+      - "us-central1-docker.pkg.dev/${PROJECT_ID}/eig-platform/eig-web:latest"
+    waitFor: ["docker-push"]
+
+  # Step 6: Deploy to Cloud Run
+  - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - eig-platform
+      - "--image=us-central1-docker.pkg.dev/${PROJECT_ID}/eig-platform/eig-web:${SHORT_SHA}"
+      - "--region=us-central1"
+      - "--platform=managed"
+      - "--allow-unauthenticated"
+      - "--port=3000"
+      - "--memory=1Gi"
+      - "--cpu=1"
+      - "--min-instances=0"
+      - "--max-instances=10"
+      - "--set-env-vars=NEXT_PUBLIC_SUPABASE_URL=${_SUPABASE_URL},NEXT_PUBLIC_SUPABASE_ANON_KEY=${_SUPABASE_ANON_KEY},SUPABASE_SERVICE_ROLE_KEY=${_SUPABASE_SERVICE_KEY},SCRAPER_API_KEY=${_SCRAPER_API_KEY},NEXT_PUBLIC_APP_URL=https://equityinvestmentgroup.club"
+    id: deploy
+    waitFor: ["docker-push"]
+
+# Substitution variables (set in Cloud Build trigger config)
+substitutions:
+  _SUPABASE_URL: ""
+  _SUPABASE_ANON_KEY: ""
+  _SUPABASE_SERVICE_KEY: ""
+  _SCRAPER_API_KEY: ""
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: "E2_HIGHCPU_8"
+
+timeout: "1200s"

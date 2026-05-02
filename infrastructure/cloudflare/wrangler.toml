@@ -1,0 +1,19 @@
+# Cloudflare Worker — Edge configuration for equityinvestmentgroup.club
+# This worker handles routing and security headers.
+# Main traffic is proxied through Cloudflare to GCP Cloud Run.
+
+name = "eig-platform-edge"
+main = "worker.js"
+compatibility_date = "2024-11-01"
+
+[vars]
+APP_NAME = "EIG Platform"
+ORIGIN = "https://eig-platform-HASH-uc.a.run.app"  # Replace with actual Cloud Run URL
+
+[[routes]]
+pattern = "equityinvestmentgroup.club/*"
+zone_name = "equityinvestmentgroup.club"
+
+[[routes]]
+pattern = "www.equityinvestmentgroup.club/*"
+zone_name = "equityinvestmentgroup.club"

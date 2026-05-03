@@ -52,12 +52,16 @@ export default async function PortfolioPage() {
     })
     .sort((a, b) => b.contributed - a.contributed);
 
-  // Allocation data for chart
-  const allocationData = holdings.map((h) => ({
-    name: h.ticker ?? h.fund_name ?? "Unknown",
-    value: h.current_value ?? 0,
-    type: h.asset_type,
-  }));
+  // Allocation: stocks grouped by sector, mutual funds individually
+  const sectorMap = new Map<string, number>();
+  for (const h of stocks) {
+    const sector = h.sector ?? "Uncategorised";
+    sectorMap.set(sector, (sectorMap.get(sector) ?? 0) + (h.current_value ?? 0));
+  }
+  const allocationData = [
+    ...Array.from(sectorMap.entries()).map(([name, value]) => ({ name, value, type: "stock" })),
+    ...funds.map((h) => ({ name: h.fund_name ?? "Fund", value: h.current_value ?? 0, type: "mutual_fund" })),
+  ];
 
   return (
     <div>
@@ -166,26 +170,6 @@ export default async function PortfolioPage() {
             <h3 className="font-semibold text-foreground mb-1">Allocation</h3>
             <p className="text-xs text-muted-foreground mb-4">Portfolio breakdown by asset</p>
             <AllocationChart data={allocationData} />
-            <div className="mt-4 space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">NGX Stocks</span>
-                <span className="font-medium text-foreground">
-                  {formatCurrency(summary?.stock_value ?? 0)}
-                  <span className="text-xs text-muted-foreground ml-1">
-                    ({totalValue > 0 ? (((summary?.stock_value ?? 0) / totalValue) * 100).toFixed(1) : 0}%)
-                  </span>
-                </span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Mutual Funds</span>
-                <span className="font-medium text-foreground">
-                  {formatCurrency(summary?.fund_value ?? 0)}
-                  <span className="text-xs text-muted-foreground ml-1">
-                    ({totalValue > 0 ? (((summary?.fund_value ?? 0) / totalValue) * 100).toFixed(1) : 0}%)
-                  </span>
-                </span>
-              </div>
-            </div>
           </div>
 
           <div className="xl:col-span-2 flex flex-col gap-4">

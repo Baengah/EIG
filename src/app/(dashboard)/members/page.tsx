@@ -1,7 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { Header } from "@/components/layout/Header";
-import { Users, UserCheck, UserX, Mail, Phone } from "lucide-react";
-import { AddMemberButton } from "@/components/members/AddMemberButton";
+import { Users, UserCheck, UserX, Mail, Phone, Info } from "lucide-react";
 
 export const revalidate = 60;
 
@@ -38,9 +37,10 @@ export default async function MembersPage() {
           </div>
         </div>
 
-        {/* Actions */}
-        <div className="flex justify-end">
-          <AddMemberButton />
+        {/* Info banner */}
+        <div className="flex items-start gap-3 bg-muted/40 border border-border rounded-xl px-4 py-3 text-sm text-muted-foreground">
+          <Info className="w-4 h-4 mt-0.5 shrink-0" />
+          <span>Members are managed directly in Supabase. This list updates automatically when members are added or changed there.</span>
         </div>
 
         {/* Member grid */}
@@ -48,7 +48,7 @@ export default async function MembersPage() {
           <div className="bg-card border border-border rounded-xl p-12 text-center">
             <Users className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
             <p className="font-medium text-foreground">No members yet</p>
-            <p className="text-sm text-muted-foreground mt-1">Add group members to start tracking contributions</p>
+            <p className="text-sm text-muted-foreground mt-1">Members added in Supabase will appear here automatically</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">

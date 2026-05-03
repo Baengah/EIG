@@ -8,7 +8,6 @@ import {
   Users,
   Wallet,
   BarChart3,
-  FileText,
   ArrowLeftRight,
   Settings,
   TrendingUp,
@@ -25,7 +24,6 @@ const navItems = [
   { href: "/portfolio", label: "Portfolio", icon: BarChart3 },
   { href: "/contributions", label: "Contributions", icon: Wallet },
   { href: "/transactions", label: "Transactions", icon: ArrowLeftRight },
-  { href: "/documents", label: "Documents", icon: FileText },
   { href: "/members", label: "Members", icon: Users },
   { href: "/settings", label: "Settings", icon: Settings },
 ];

@@ -1,8 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { Header } from "@/components/layout/Header";
 import { formatCurrency, formatPercent, formatNumber, isPositive } from "@/lib/utils";
-import { TrendingUp, TrendingDown, PieChart, BarChart3 } from "lucide-react";
-import { AddTransactionButton } from "@/components/portfolio/AddTransactionButton";
+import { TrendingUp, TrendingDown, PieChart, BarChart3, Users } from "lucide-react";
 import { AllocationChart } from "@/components/portfolio/AllocationChart";
 
 export const revalidate = 300;
@@ -10,16 +9,20 @@ export const revalidate = 300;
 export default async function PortfolioPage() {
   const supabase = await createClient();
 
-  const [holdingsRes, summaryRes] = await Promise.all([
+  const [holdingsRes, summaryRes, membersRes, contribsRes] = await Promise.all([
     supabase
       .from("v_holdings_with_value")
       .select("*")
       .order("current_value", { ascending: false }),
     supabase.from("v_portfolio_summary").select("*").single(),
+    supabase.from("members").select("id, full_name, member_number").eq("is_active", true).order("full_name"),
+    supabase.from("member_contributions").select("member_id, amount"),
   ]);
 
   const holdings = holdingsRes.data ?? [];
   const summary = summaryRes.data;
+  const members = membersRes.data ?? [];
+  const contribs = contribsRes.data ?? [];
 
   const stocks = holdings.filter((h) => h.asset_type === "stock");
   const funds = holdings.filter((h) => h.asset_type === "mutual_fund");
@@ -29,6 +32,25 @@ export default async function PortfolioPage() {
   const gainLoss = summary?.total_unrealized_gain_loss ?? 0;
   const gainLossPct = summary?.overall_gain_loss_percent ?? 0;
   const positive = isPositive(gainLoss);
+
+  // Contributor breakdown
+  const memberMap = new Map(members.map(m => [m.id, m]));
+  const memberTotals = new Map<string, number>();
+  for (const c of contribs) {
+    memberTotals.set(c.member_id, (memberTotals.get(c.member_id) ?? 0) + Number(c.amount));
+  }
+  const totalContributed = Array.from(memberTotals.values()).reduce((a, b) => a + b, 0);
+
+  const contributorRows = Array.from(memberTotals.entries())
+    .map(([memberId, contributed]) => {
+      const sharePct = totalContributed > 0 ? contributed / totalContributed : 0;
+      const attrCost = sharePct * totalCost;
+      const attrValue = sharePct * totalValue;
+      const attrGain = sharePct * gainLoss;
+      const member = memberMap.get(memberId);
+      return { memberId, member, contributed, sharePct, attrCost, attrValue, attrGain };
+    })
+    .sort((a, b) => b.contributed - a.contributed);
 
   // Allocation data for chart
   const allocationData = holdings.map((h) => ({
@@ -67,7 +89,78 @@ export default async function PortfolioPage() {
           </div>
         </div>
 
-        {/* Allocation chart + breakdown */}
+        {/* Contributor breakdown */}
+        <div className="bg-card border border-border rounded-xl overflow-hidden">
+          <div className="px-5 py-4 border-b border-border flex items-center gap-2">
+            <Users className="w-4 h-4 text-primary" />
+            <div>
+              <h3 className="font-semibold text-foreground">Contributor Breakdown</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Each member&apos;s share of cost, current valuation, and unrealized gains
+              </p>
+            </div>
+          </div>
+
+          {contributorRows.length === 0 ? (
+            <div className="p-10 text-center">
+              <Users className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+              <p className="text-sm font-medium text-foreground">No contributions recorded</p>
+              <p className="text-xs text-muted-foreground mt-1">Record member contributions to see the breakdown</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/30">
+                  <tr>
+                    <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground">Member</th>
+                    <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground">Total Contributed</th>
+                    <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground">Share %</th>
+                    <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground">Share of Cost</th>
+                    <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground">Share of Value</th>
+                    <th className="text-right px-5 py-3 text-xs font-medium text-muted-foreground">Share of Gains</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {contributorRows.map(({ memberId, member, contributed, sharePct, attrCost, attrValue, attrGain }) => (
+                    <tr key={memberId} className="hover:bg-muted/20 transition-colors">
+                      <td className="px-5 py-3">
+                        <p className="font-medium text-foreground">{member?.full_name ?? "Unknown"}</p>
+                        <p className="text-xs text-muted-foreground">{member?.member_number ?? ""}</p>
+                      </td>
+                      <td className="px-4 py-3 text-right text-foreground">{formatCurrency(contributed)}</td>
+                      <td className="px-4 py-3 text-right text-foreground">{(sharePct * 100).toFixed(2)}%</td>
+                      <td className="px-4 py-3 text-right text-foreground">{formatCurrency(attrCost)}</td>
+                      <td className="px-4 py-3 text-right font-medium text-foreground">{formatCurrency(attrValue)}</td>
+                      <td className="px-5 py-3 text-right">
+                        <span className={`font-medium ${attrGain >= 0 ? "text-gain" : "text-loss"}`}>
+                          {attrGain >= 0 ? "+" : ""}{formatCurrency(attrGain)}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                {contributorRows.length > 1 && (
+                  <tfoot className="bg-muted/20 border-t border-border">
+                    <tr>
+                      <td className="px-5 py-3 text-xs font-semibold text-muted-foreground">Total</td>
+                      <td className="px-4 py-3 text-right font-bold text-foreground">{formatCurrency(totalContributed)}</td>
+                      <td className="px-4 py-3 text-right font-bold text-foreground">100%</td>
+                      <td className="px-4 py-3 text-right font-bold text-foreground">{formatCurrency(totalCost)}</td>
+                      <td className="px-4 py-3 text-right font-bold text-foreground">{formatCurrency(totalValue)}</td>
+                      <td className="px-5 py-3 text-right">
+                        <span className={`font-bold ${gainLoss >= 0 ? "text-gain" : "text-loss"}`}>
+                          {gainLoss >= 0 ? "+" : ""}{formatCurrency(gainLoss)}
+                        </span>
+                      </td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* Allocation chart + holdings */}
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
           <div className="bg-card border border-border rounded-xl p-5">
             <h3 className="font-semibold text-foreground mb-1">Allocation</h3>
@@ -96,11 +189,6 @@ export default async function PortfolioPage() {
           </div>
 
           <div className="xl:col-span-2 flex flex-col gap-4">
-            {/* Add transaction */}
-            <div className="flex justify-end">
-              <AddTransactionButton />
-            </div>
-
             {/* Stock holdings */}
             {stocks.length > 0 && (
               <div className="bg-card border border-border rounded-xl overflow-hidden">

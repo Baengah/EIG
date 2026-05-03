@@ -1,8 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
 import { Header } from "@/components/layout/Header";
 import { formatCurrency } from "@/lib/utils";
-import { ArrowLeftRight } from "lucide-react";
+import { ArrowLeftRight, Upload } from "lucide-react";
 import { AddTransactionButton } from "@/components/portfolio/AddTransactionButton";
+import { FileUpload } from "@/components/documents/FileUpload";
 
 const TXN_COLORS: Record<string, string> = {
   buy: "bg-blue-100 text-blue-700",
@@ -62,9 +63,31 @@ export default async function TransactionsPage() {
           </div>
         </div>
 
-        {/* Add transaction */}
-        <div className="flex justify-end">
-          <AddTransactionButton />
+        {/* Entry options */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Upload document */}
+          <div className="bg-card border border-border rounded-xl p-5">
+            <div className="flex items-center gap-2 mb-4">
+              <Upload className="w-4 h-4 text-primary" />
+              <h3 className="font-semibold text-foreground">Upload Document</h3>
+            </div>
+            <p className="text-xs text-muted-foreground mb-4">
+              Upload contract notes, bank statements, or valuation reports. Holdings will be extracted automatically.
+            </p>
+            <FileUpload />
+          </div>
+
+          {/* Manual entry */}
+          <div className="bg-card border border-border rounded-xl p-5">
+            <div className="flex items-center gap-2 mb-4">
+              <ArrowLeftRight className="w-4 h-4 text-primary" />
+              <h3 className="font-semibold text-foreground">Manual Entry</h3>
+            </div>
+            <p className="text-xs text-muted-foreground mb-4">
+              Manually record a buy, sell, dividend, bonus, rights issue, or transfer transaction.
+            </p>
+            <AddTransactionButton />
+          </div>
         </div>
 
         {/* Transaction table */}

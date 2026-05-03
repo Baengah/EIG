@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { Header } from "@/components/layout/Header";
 import { formatCurrency, formatPercent, formatNumber, isPositive } from "@/lib/utils";
 import { TrendingUp, TrendingDown, PieChart, BarChart3, Users } from "lucide-react";
-import { AllocationChart } from "@/components/portfolio/AllocationChart";
+import { AllocationChart, type AllocationSegment } from "@/components/portfolio/AllocationChart";
 
 export const revalidate = 300;
 
@@ -52,15 +52,28 @@ export default async function PortfolioPage() {
     })
     .sort((a, b) => b.contributed - a.contributed);
 
-  // Allocation: stocks grouped by sector, mutual funds individually
+  // Allocation: stocks grouped by sector (with constituent tickers), mutual funds individually
   const sectorMap = new Map<string, number>();
   for (const h of stocks) {
     const sector = h.sector ?? "Uncategorised";
     sectorMap.set(sector, (sectorMap.get(sector) ?? 0) + (h.current_value ?? 0));
   }
-  const allocationData = [
-    ...Array.from(sectorMap.entries()).map(([name, value]) => ({ name, value, type: "stock" })),
-    ...funds.map((h) => ({ name: h.fund_name ?? "Fund", value: h.current_value ?? 0, type: "mutual_fund" })),
+  const allocationData: AllocationSegment[] = [
+    ...Array.from(sectorMap.entries()).map(([sector, value]) => ({
+      name: sector,
+      value,
+      type: "stock",
+      holdings: stocks
+        .filter((h) => (h.sector ?? "Uncategorised") === sector)
+        .sort((a, b) => (b.current_value ?? 0) - (a.current_value ?? 0))
+        .map((h) => ({ name: h.ticker ?? "Unknown", subName: h.company_name ?? undefined, value: h.current_value ?? 0 })),
+    })),
+    ...funds.map((h) => ({
+      name: h.fund_name ?? "Fund",
+      value: h.current_value ?? 0,
+      type: "mutual_fund",
+      holdings: [{ name: h.fund_name ?? "Fund", subName: h.fund_type ?? undefined, value: h.current_value ?? 0 }],
+    })),
   ];
 
   return (

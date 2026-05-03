@@ -38,9 +38,16 @@ export async function GET(request: NextRequest) {
 
   // PKCE code path — Supabase default: verifies on their server then redirects here with ?code=
   if (code) {
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
-    if (!error) {
-      return NextResponse.redirect(new URL(next, origin));
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+    if (!error && data.user) {
+      // New invitee has no profile row yet — send them to account setup
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("id", data.user.id)
+        .single();
+      const dest = profile ? next : "/auth/accept-invite";
+      return NextResponse.redirect(new URL(dest, origin));
     }
   }
 

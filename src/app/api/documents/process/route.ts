@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
+import type { Json } from "@/types/database";
 
 export async function POST() {
   try {
@@ -37,7 +38,7 @@ export async function POST() {
           .from("documents")
           .update({
             processing_status: "completed",
-            extracted_data: extractedData,
+            extracted_data: extractedData as Json,
           })
           .eq("id", doc.id);
 

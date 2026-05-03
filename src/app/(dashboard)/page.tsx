@@ -13,7 +13,7 @@ export const revalidate = 300; // Revalidate every 5 minutes
 async function getDashboardData() {
   const supabase = await createClient();
 
-  const [summary, snapshot, contributions, recentTxns, topHoldings] = await Promise.all([
+  const [summary, snapshot, periodRes, recentTxns, topHoldings, activeMembersCount] = await Promise.all([
     supabase.from("v_portfolio_summary").select("*").single(),
     supabase
       .from("portfolio_snapshots")
@@ -22,14 +22,14 @@ async function getDashboardData() {
       .limit(30),
     supabase
       .from("contribution_periods")
-      .select("*, contributions(status, amount_paid)")
+      .select("id, year, month, amount_per_member, due_date")
       .order("year", { ascending: false })
       .order("month", { ascending: false })
       .limit(1)
       .single(),
     supabase
       .from("transactions")
-      .select("*, stocks(ticker, company_name), mutual_funds(fund_name)")
+      .select("id, transaction_date, transaction_type, quantity, net_amount, stock_id, mutual_fund_id")
       .order("transaction_date", { ascending: false })
       .limit(5),
     supabase
@@ -37,25 +37,59 @@ async function getDashboardData() {
       .select("*")
       .order("current_value", { ascending: false })
       .limit(5),
+    supabase
+      .from("members")
+      .select("id", { count: "exact" })
+      .eq("is_active", true),
   ]);
 
-  const activeMembersCount = await supabase
-    .from("members")
-    .select("id", { count: "exact" })
-    .eq("is_active", true);
+  // Fetch contribution counts for the latest period
+  const latestPeriod = periodRes.data;
+  let totalContribs = 0;
+  let paidContribs = 0;
+  if (latestPeriod?.id) {
+    const contribStats = await supabase
+      .from("contributions")
+      .select("status")
+      .eq("period_id", latestPeriod.id);
+    totalContribs = contribStats.data?.length ?? 0;
+    paidContribs = contribStats.data?.filter((c) => c.status === "paid").length ?? 0;
+  }
+
+  // Fetch stock/fund names for recent transactions
+  const txns = recentTxns.data ?? [];
+  const stockIds = txns.filter((t) => t.stock_id).map((t) => t.stock_id!);
+  const fundIds = txns.filter((t) => t.mutual_fund_id).map((t) => t.mutual_fund_id!);
+  const [stocksRes, fundsRes] = await Promise.all([
+    stockIds.length > 0
+      ? supabase.from("stocks").select("id, ticker, company_name").in("id", stockIds)
+      : Promise.resolve({ data: [] as { id: string; ticker: string; company_name: string }[] }),
+    fundIds.length > 0
+      ? supabase.from("mutual_funds").select("id, fund_name").in("id", fundIds)
+      : Promise.resolve({ data: [] as { id: string; fund_name: string }[] }),
+  ]);
+  const stockMap = Object.fromEntries((stocksRes.data ?? []).map((s) => [s.id, s]));
+  const fundMap = Object.fromEntries((fundsRes.data ?? []).map((f) => [f.id, f]));
+  const enrichedTxns = txns.map((t) => ({
+    ...t,
+    stocks: t.stock_id ? stockMap[t.stock_id] ?? null : null,
+    mutual_funds: t.mutual_fund_id ? fundMap[t.mutual_fund_id] ?? null : null,
+  }));
 
   return {
     summary: summary.data,
     snapshots: snapshot.data ?? [],
-    latestPeriod: contributions.data,
-    recentTxns: recentTxns.data ?? [],
+    latestPeriod,
+    totalContribs,
+    paidContribs,
+    recentTxns: enrichedTxns,
     topHoldings: topHoldings.data ?? [],
     memberCount: activeMembersCount.count ?? 0,
   };
 }
 
 export default async function DashboardPage() {
-  const { summary, snapshots, latestPeriod, recentTxns, topHoldings, memberCount } = await getDashboardData();
+  const { summary, snapshots, latestPeriod, totalContribs, paidContribs, recentTxns, topHoldings, memberCount } = await getDashboardData();
 
   const portfolioValue = summary?.total_value ?? 0;
   const totalCost = summary?.total_cost ?? 0;
@@ -63,9 +97,6 @@ export default async function DashboardPage() {
   const gainLossPct = summary?.overall_gain_loss_percent ?? 0;
   const positive = isPositive(gainLoss);
 
-  // Contribution stats for latest period
-  const totalContribs = latestPeriod?.contributions?.length ?? 0;
-  const paidContribs = latestPeriod?.contributions?.filter((c: { status: string }) => c.status === "paid").length ?? 0;
   const pendingContribs = totalContribs - paidContribs;
 
   const stats = [

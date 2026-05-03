@@ -36,7 +36,7 @@ export async function POST(request: Request) {
     const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://equityinvestmentgroup.club";
 
     const { data, error } = await supabase.auth.admin.inviteUserByEmail(email, {
-      redirectTo: `${appUrl}/auth/callback`,
+      redirectTo: `${appUrl}/auth/callback?next=/auth/accept-invite`,
       data: { role },
     });
 

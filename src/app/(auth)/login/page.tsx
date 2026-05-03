@@ -19,7 +19,7 @@ export default function LoginPage() {
     try {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
-      router.push("/dashboard");
+      router.push("/");
       router.refresh();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Login failed");

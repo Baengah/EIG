@@ -4,7 +4,10 @@ import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@/types/database";
 
 export async function GET(request: NextRequest) {
-  const { searchParams, origin } = new URL(request.url);
+  const { searchParams } = new URL(request.url);
+  // Use the configured public URL as origin — Cloud Run exposes an internal
+  // address (0.0.0.0:3000) which would produce broken redirect URLs otherwise.
+  const origin = process.env.NEXT_PUBLIC_APP_URL ?? "https://equityinvestmentgroup.club";
   const token_hash = searchParams.get("token_hash");
   const type = searchParams.get("type");
   const code = searchParams.get("code");

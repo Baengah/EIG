@@ -3,21 +3,25 @@ import { Header } from "@/components/layout/Header";
 import { BrokerAccountForm } from "@/components/settings/BrokerAccountForm";
 import { BankAccountForm } from "@/components/settings/BankAccountForm";
 import { TriggerScrapeButton } from "@/components/settings/TriggerScrapeButton";
-import { Building2, Landmark, RefreshCw } from "lucide-react";
+import { InviteUserButton } from "@/components/settings/InviteUserButton";
+import { Building2, Landmark, RefreshCw, Users } from "lucide-react";
 
 export const revalidate = 60;
 
 export default async function SettingsPage() {
   const supabase = await createClient();
 
+  const { data: { user } } = await supabase.auth.getUser();
+
   const [brokersRes, banksRes, profileRes] = await Promise.all([
     supabase.from("broker_accounts").select("*").order("broker_name"),
     supabase.from("bank_accounts").select("*").order("bank_name"),
-    supabase.auth.getUser(),
+    user ? supabase.from("profiles").select("role").eq("id", user.id).single() : Promise.resolve({ data: null }),
   ]);
 
   const brokers = brokersRes.data ?? [];
   const banks = banksRes.data ?? [];
+  const isAdmin = profileRes.data?.role === "admin";
 
   return (
     <div>
@@ -67,6 +71,22 @@ export default async function SettingsPage() {
             <BankAccountForm />
           </div>
         </div>
+
+        {/* Access & Invites — admin only */}
+        {isAdmin && (
+          <div className="bg-card border border-border rounded-xl p-5">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <Users className="w-4 h-4 text-primary" />
+                <h3 className="font-semibold text-foreground">Access &amp; Invites</h3>
+              </div>
+              <InviteUserButton />
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Invite new members to the platform. They will receive an email with a link to set their name, phone, and password.
+            </p>
+          </div>
+        )}
 
         {/* Manual scrape trigger */}
         <div className="bg-card border border-border rounded-xl p-5">

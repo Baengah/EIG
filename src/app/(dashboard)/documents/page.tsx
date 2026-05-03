@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { Header } from "@/components/layout/Header";
 import { FileUpload } from "@/components/documents/FileUpload";
+import { DocumentActions } from "@/components/documents/DocumentActions";
 import { FileText, CheckCircle2, Clock, AlertCircle, Upload } from "lucide-react";
 
 const TYPE_LABELS: Record<string, string> = {
@@ -90,6 +91,7 @@ export default async function DocumentsPage() {
                     <th className="text-center px-4 py-3 text-xs font-medium text-muted-foreground">Status</th>
                     <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Uploaded</th>
                     <th className="text-right px-5 py-3 text-xs font-medium text-muted-foreground">Size</th>
+                    <th className="px-4 py-3"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -127,6 +129,9 @@ export default async function DocumentsPage() {
                               ? `${(doc.file_size / 1024).toFixed(0)} KB`
                               : `${(doc.file_size / (1024 * 1024)).toFixed(1)} MB`
                             : "—"}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <DocumentActions doc={doc} />
                         </td>
                       </tr>
                     );

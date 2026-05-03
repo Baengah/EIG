@@ -15,6 +15,11 @@ export async function POST() {
   try {
     const supabase = await createServiceClient();
 
+    const { data: { user }, error: authErr } = await supabase.auth.getUser();
+    if (authErr || !user) {
+      return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
+    }
+
     const { data: pending } = await supabase
       .from("documents")
       .select("*")

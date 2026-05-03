@@ -25,6 +25,11 @@ export async function POST(
     const body: ImportBody = await request.json();
     const supabase = await createServiceClient();
 
+    const { data: { user }, error: authErr } = await supabase.auth.getUser();
+    if (authErr || !user) {
+      return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
+    }
+
     // Fetch document
     const { data: doc, error: docError } = await supabase
       .from("documents")

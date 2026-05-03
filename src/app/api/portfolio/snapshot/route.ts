@@ -4,6 +4,12 @@ import { createServiceClient } from "@/lib/supabase/server";
 export async function POST() {
   try {
     const supabase = await createServiceClient();
+
+    const { data: { user }, error: authErr } = await supabase.auth.getUser();
+    if (authErr || !user) {
+      return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
+    }
+
     const today = new Date().toISOString().split("T")[0];
 
     const { data, error } = await supabase.rpc("create_portfolio_snapshot", { p_date: today });
@@ -18,6 +24,11 @@ export async function POST() {
 export async function GET() {
   try {
     const supabase = await createServiceClient();
+
+    const { data: { user }, error: authErr } = await supabase.auth.getUser();
+    if (authErr || !user) {
+      return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
+    }
 
     const { data, error } = await supabase
       .from("portfolio_snapshots")

@@ -1,4 +1,4 @@
-FROM node:20-alpine AS base
+FROM node:22-alpine AS base
 
 # Install dependencies only
 FROM base AS deps
@@ -25,10 +25,6 @@ ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
 ENV NEXT_TELEMETRY_DISABLED=1
 
 RUN npm run build
-
-# Next.js standalone omits route-group page_client-reference-manifest.js files.
-# Copy the full server/app tree into the standalone output so they are present at runtime.
-RUN cp -r /app/.next/server/app/. /app/.next/standalone/.next/server/app/
 
 # Production runner
 FROM base AS runner

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import type { Json } from "@/types/database";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/types/database";
 
 export async function POST() {
   try {
@@ -60,8 +62,7 @@ export async function POST() {
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function processBankStatement(filePath: string, supabase: any): Promise<Record<string, unknown>> {
+async function processBankStatement(filePath: string, supabase: SupabaseClient<Database, "public">): Promise<Record<string, unknown>> {
   // Download file from Supabase Storage
   const { data: fileData, error } = await supabase.storage
     .from("eig-documents")
@@ -82,8 +83,7 @@ async function processBankStatement(filePath: string, supabase: any): Promise<Re
   };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function processContractNote(filePath: string, supabase: any): Promise<Record<string, unknown>> {
+async function processContractNote(filePath: string, supabase: SupabaseClient<Database, "public">): Promise<Record<string, unknown>> {
   const { data: fileData, error } = await supabase.storage
     .from("eig-documents")
     .download(filePath);

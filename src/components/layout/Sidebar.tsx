@@ -21,13 +21,13 @@ import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 
 const navItems = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/dashboard/portfolio", label: "Portfolio", icon: BarChart3 },
-  { href: "/dashboard/contributions", label: "Contributions", icon: Wallet },
-  { href: "/dashboard/transactions", label: "Transactions", icon: ArrowLeftRight },
-  { href: "/dashboard/documents", label: "Documents", icon: FileText },
-  { href: "/dashboard/members", label: "Members", icon: Users },
-  { href: "/dashboard/settings", label: "Settings", icon: Settings },
+  { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/portfolio", label: "Portfolio", icon: BarChart3 },
+  { href: "/contributions", label: "Contributions", icon: Wallet },
+  { href: "/transactions", label: "Transactions", icon: ArrowLeftRight },
+  { href: "/documents", label: "Documents", icon: FileText },
+  { href: "/members", label: "Members", icon: Users },
+  { href: "/settings", label: "Settings", icon: Settings },
 ];
 
 export function Sidebar() {
@@ -65,7 +65,7 @@ export function Sidebar() {
       {/* Nav */}
       <nav className="flex-1 py-4 px-2 space-y-0.5 overflow-y-auto">
         {navItems.map(({ href, label, icon: Icon }) => {
-          const isActive = pathname === href || (href !== "/dashboard" && pathname.startsWith(href));
+          const isActive = pathname === href || (href !== "/" && pathname.startsWith(href));
           return (
             <Link
               key={href}

@@ -187,7 +187,7 @@ export default async function DashboardPage() {
                 <p className="text-xs text-muted-foreground mt-0.5">30-day portfolio value history</p>
               </div>
               <Link
-                href="/dashboard/portfolio"
+                href="/portfolio"
                 className="text-xs text-primary hover:underline flex items-center gap-1"
               >
                 View holdings <ArrowUpRight className="w-3 h-3" />
@@ -199,7 +199,7 @@ export default async function DashboardPage() {
           <div className="bg-card rounded-xl border border-border p-5">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-foreground">Top Holdings</h3>
-              <Link href="/dashboard/portfolio" className="text-xs text-primary hover:underline">
+              <Link href="/portfolio" className="text-xs text-primary hover:underline">
                 All holdings
               </Link>
             </div>
@@ -255,7 +255,7 @@ export default async function DashboardPage() {
               <h3 className="font-semibold text-foreground">Recent Transactions</h3>
               <p className="text-xs text-muted-foreground mt-0.5">Latest portfolio activity</p>
             </div>
-            <Link href="/dashboard/transactions" className="text-xs text-primary hover:underline flex items-center gap-1">
+            <Link href="/transactions" className="text-xs text-primary hover:underline flex items-center gap-1">
               View all <ArrowUpRight className="w-3 h-3" />
             </Link>
           </div>

@@ -472,6 +472,40 @@ export type Database = {
         };
         Relationships: [];
       };
+      member_contributions: {
+        Row: {
+          id: string;
+          member_id: string;
+          amount: number;
+          contribution_date: string;
+          payment_method: "bank_transfer" | "cash" | "online" | "other";
+          bank_reference: string | null;
+          notes: string | null;
+          recorded_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          member_id: string;
+          amount: number;
+          contribution_date: string;
+          payment_method?: "bank_transfer" | "cash" | "online" | "other";
+          bank_reference?: string | null;
+          notes?: string | null;
+          recorded_by?: string | null;
+        };
+        Update: {
+          id?: string;
+          member_id?: string;
+          amount?: number;
+          contribution_date?: string;
+          payment_method?: "bank_transfer" | "cash" | "online" | "other";
+          bank_reference?: string | null;
+          notes?: string | null;
+          recorded_by?: string | null;
+        };
+        Relationships: [];
+      };
       broker_accounts: {
         Row: {
           id: string;

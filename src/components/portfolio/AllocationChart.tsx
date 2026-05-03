@@ -173,13 +173,13 @@ export function AllocationChart({ data }: AllocationChartProps) {
                         {d.holdings.map((h) => {
                           const hPct = d.value > 0 ? ((h.value / d.value) * 100).toFixed(1) : "0";
                           return (
-                            <div key={h.name} className="flex items-center gap-2 text-xs">
-                              <span className="font-medium text-foreground w-16 shrink-0">{h.name}</span>
-                              {h.subName && (
-                                <span className="text-muted-foreground flex-1 truncate">{h.subName}</span>
-                              )}
-                              <span className="text-muted-foreground tabular-nums ml-auto">{hPct}%</span>
-                              <span className="text-foreground tabular-nums w-24 text-right">
+                            <div key={h.name} className="grid grid-cols-[auto_1fr_auto_auto] items-center gap-x-2 text-xs">
+                              <span className="font-medium text-foreground">{h.name}</span>
+                              <span className="text-muted-foreground truncate">
+                                {h.subName ?? ""}
+                              </span>
+                              <span className="text-muted-foreground tabular-nums text-right">{hPct}%</span>
+                              <span className="text-foreground tabular-nums text-right min-w-[6rem]">
                                 {formatCurrency(h.value)}
                               </span>
                             </div>

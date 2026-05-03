@@ -136,7 +136,7 @@ export default function AcceptInvitePage() {
                   value={fullName}
                   onChange={e => setFullName(e.target.value)}
                   required
-                  placeholder="Oluwatobi Amida"
+                  placeholder="First name Surname"
                   className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-input bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring text-sm"
                 />
               </div>

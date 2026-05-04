@@ -506,6 +506,40 @@ export type Database = {
         };
         Relationships: [];
       };
+      bank_ledger: {
+        Row: {
+          id: string;
+          entry_date: string;
+          description: string;
+          amount: number;
+          category: "interest_income" | "bank_charge" | "tax" | "broker_transfer" | "other_income" | "other_expense";
+          bank_account_id: string | null;
+          bank_reference: string | null;
+          notes: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          entry_date: string;
+          description: string;
+          amount: number;
+          category: "interest_income" | "bank_charge" | "tax" | "broker_transfer" | "other_income" | "other_expense";
+          bank_account_id?: string | null;
+          bank_reference?: string | null;
+          notes?: string | null;
+        };
+        Update: {
+          id?: string;
+          entry_date?: string;
+          description?: string;
+          amount?: number;
+          category?: "interest_income" | "bank_charge" | "tax" | "broker_transfer" | "other_income" | "other_expense";
+          bank_account_id?: string | null;
+          bank_reference?: string | null;
+          notes?: string | null;
+        };
+        Relationships: [];
+      };
       broker_accounts: {
         Row: {
           id: string;
@@ -677,6 +711,7 @@ export type Document = Database["public"]["Tables"]["documents"]["Row"];
 export type PortfolioSnapshot = Database["public"]["Tables"]["portfolio_snapshots"]["Row"];
 export type BankAccount = Database["public"]["Tables"]["bank_accounts"]["Row"];
 export type BrokerAccount = Database["public"]["Tables"]["broker_accounts"]["Row"];
+export type BankLedgerEntry = Database["public"]["Tables"]["bank_ledger"]["Row"];
 export type HoldingWithValue = Database["public"]["Views"]["v_holdings_with_value"]["Row"];
 export type PortfolioSummary = Database["public"]["Views"]["v_portfolio_summary"]["Row"];
 export type ContributionStatus = Database["public"]["Views"]["v_contribution_status"]["Row"];

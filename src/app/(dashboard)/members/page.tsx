@@ -1,8 +1,35 @@
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { Header } from "@/components/layout/Header";
-import { Users, UserCheck, UserX, Mail, Phone, Info, ShieldCheck, Clock } from "lucide-react";
+import { Users, UserCheck, UserX, Mail, Phone, ShieldCheck, Clock } from "lucide-react";
 
 export const revalidate = 60;
+
+function normalizeName(s: string) {
+  return s.toLowerCase().replace(/[^a-z\s]/g, "").replace(/\s+/g, " ").trim();
+}
+
+// Match names where last name is identical and one first name is a suffix/prefix of the other.
+// Handles "Tobi Amida" ↔ "Oluwatobi Paul Amida" (tobi ∈ oluwatobi).
+function fuzzyNameMatch(
+  authUsers: ReturnType<typeof Array.prototype.map>,
+  memberName: string,
+  excludeIds: Set<string>
+): (typeof authUsers)[number] | undefined {
+  const mParts = normalizeName(memberName).split(" ").filter(Boolean);
+  if (mParts.length < 2) return undefined;
+  const mFirst = mParts[0];
+  const mLast = mParts[mParts.length - 1];
+  return (authUsers as Array<{ id: string; user_metadata?: Record<string, unknown> }>).find(u => {
+    if (excludeIds.has(u.id)) return false;
+    const raw = u.user_metadata?.full_name as string | undefined;
+    if (!raw) return false;
+    const uParts = normalizeName(raw).split(" ").filter(Boolean);
+    if (uParts.length < 2) return false;
+    const uFirst = uParts[0];
+    const uLast = uParts[uParts.length - 1];
+    return uLast === mLast && (uFirst.includes(mFirst) || mFirst.includes(uFirst));
+  });
+}
 
 export default async function MembersPage() {
   const [supabase, serviceClient] = await Promise.all([
@@ -20,17 +47,18 @@ export default async function MembersPage() {
   const members = membersRes.data ?? [];
   const profiles = profilesRes.data ?? [];
 
-  // Role lookup (our custom app role) by auth user id
   const roleById = new Map(profiles.map((p) => [p.id, p.role]));
 
-  // Member lookup by profile_id or by email (fallback)
-  const memberByProfileId = new Map(
-    members.filter((m) => m.profile_id).map((m) => [m.profile_id!, m])
+  // Auth user lookup maps: by id, by email, by normalised name
+  const authById = new Map(authUsers.map((u) => [u.id, u]));
+  const authByEmail = new Map(
+    authUsers.filter((u) => u.email).map((u) => [u.email!.toLowerCase(), u])
   );
-  const memberByEmail = new Map(members.map((m) => [m.email.toLowerCase(), m]));
-
-  // Track which member rows have been matched to an auth user
-  const matchedMemberIds = new Set<string>();
+  const authByName = new Map(
+    authUsers
+      .filter((u) => u.user_metadata?.full_name)
+      .map((u) => [normalizeName(u.user_metadata.full_name as string), u])
+  );
 
   type Entry = {
     key: string;
@@ -46,59 +74,68 @@ export default async function MembersPage() {
     invitePending: boolean;
   };
 
-  // 1. One entry per auth user (mirrors Supabase Users section exactly)
-  const authEntries: Entry[] = authUsers.map((u) => {
-    const member =
-      memberByProfileId.get(u.id) ??
-      memberByEmail.get(u.email?.toLowerCase() ?? "");
+  // Match each member to an auth user: profile_id → email → normalised name
+  const matchedAuthIds = new Set<string>();
 
-    if (member) matchedMemberIds.add(member.id);
+  const memberEntries: Entry[] = members.map((m) => {
+    const authUser =
+      (m.profile_id ? authById.get(m.profile_id) : undefined) ??
+      authByEmail.get(m.email.toLowerCase()) ??
+      authByName.get(normalizeName(m.full_name)) ??
+      fuzzyNameMatch(authUsers, m.full_name, matchedAuthIds);
 
-    const displayName =
-      (u.user_metadata?.full_name as string | undefined)?.trim() ||
-      u.email?.split("@")[0] ||
-      "Unknown";
+    if (authUser) matchedAuthIds.add(authUser.id);
 
-    // User has confirmed email but may not have set password yet
-    const invitePending = !u.confirmed_at || !u.last_sign_in_at;
+    const invitePending = authUser
+      ? !authUser.confirmed_at || !authUser.last_sign_in_at
+      : false;
 
     return {
-      key: u.id,
-      full_name: displayName,
-      email: u.email ?? "",
-      phone: (u.user_metadata?.phone as string | undefined) ?? member?.phone ?? null,
-      member_number: member?.member_number ?? null,
-      join_date: member?.join_date ?? u.created_at,
-      is_active: member ? member.is_active : true,
-      bank_name: member?.bank_name ?? null,
-      bank_account_number: member?.bank_account_number ?? null,
-      role: roleById.get(u.id) ?? "member",
-      invitePending,
-    };
-  });
-
-  // 2. Members in the members table that have no matching auth user
-  const unmatchedMemberEntries: Entry[] = members
-    .filter((m) => !matchedMemberIds.has(m.id))
-    .map((m) => ({
       key: m.id,
-      full_name: m.full_name,
-      email: m.email,
-      phone: m.phone,
+      // Prefer the real display name from auth if available
+      full_name: (authUser?.user_metadata?.full_name as string | undefined)?.trim() || m.full_name,
+      email: authUser?.email || m.email,
+      phone: (authUser?.user_metadata?.phone as string | undefined) ?? m.phone,
       member_number: m.member_number,
       join_date: m.join_date,
       is_active: m.is_active,
       bank_name: m.bank_name,
       bank_account_number: m.bank_account_number,
-      role: "member",
-      invitePending: false,
-    }));
+      role: authUser ? (roleById.get(authUser.id) ?? "member") : "member",
+      invitePending,
+    };
+  });
 
-  const all: Entry[] = [...authEntries, ...unmatchedMemberEntries].sort((a, b) =>
+  // Auth users with no matching member row
+  const unlinkedAuthEntries: Entry[] = authUsers
+    .filter((u) => !matchedAuthIds.has(u.id))
+    .map((u) => {
+      const displayName =
+        (u.user_metadata?.full_name as string | undefined)?.trim() ||
+        u.email?.split("@")[0] ||
+        "Unknown";
+      const invitePending = !u.confirmed_at || !u.last_sign_in_at;
+      return {
+        key: u.id,
+        full_name: displayName,
+        email: u.email ?? "",
+        phone: (u.user_metadata?.phone as string | undefined) ?? null,
+        member_number: null,
+        join_date: u.created_at,
+        is_active: true,
+        bank_name: null,
+        bank_account_number: null,
+        role: roleById.get(u.id) ?? "member",
+        invitePending,
+      };
+    });
+
+  const all: Entry[] = [...memberEntries, ...unlinkedAuthEntries].sort((a, b) =>
     a.full_name.localeCompare(b.full_name)
   );
 
-  const activeCount = all.filter((e) => e.is_active).length;
+  const activeCount = all.filter((e) => e.is_active && !e.invitePending).length;
+  const pendingCount = all.filter((e) => e.invitePending).length;
   const inactiveCount = all.filter((e) => !e.is_active).length;
 
   return (
@@ -117,18 +154,9 @@ export default async function MembersPage() {
             <p className="text-2xl font-bold text-gain">{activeCount}</p>
           </div>
           <div className="bg-card border border-border rounded-xl p-4">
-            <p className="text-xs text-muted-foreground mb-1">Inactive</p>
-            <p className="text-2xl font-bold text-muted-foreground">{inactiveCount}</p>
+            <p className="text-xs text-muted-foreground mb-1">Pending invite</p>
+            <p className="text-2xl font-bold text-amber-500">{pendingCount + inactiveCount}</p>
           </div>
-        </div>
-
-        {/* Info banner */}
-        <div className="flex items-start gap-3 bg-muted/40 border border-border rounded-xl px-4 py-3 text-sm text-muted-foreground">
-          <Info className="w-4 h-4 mt-0.5 shrink-0" />
-          <span>
-            Mirrors the <strong className="text-foreground">Supabase Users</strong> list exactly,
-            supplemented with any members not yet invited. Display names match what you see in the Supabase dashboard.
-          </span>
         </div>
 
         {/* Member grid */}
@@ -136,9 +164,6 @@ export default async function MembersPage() {
           <div className="bg-card border border-border rounded-xl p-12 text-center">
             <Users className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
             <p className="font-medium text-foreground">No members yet</p>
-            <p className="text-sm text-muted-foreground mt-1">
-              Invite users via Settings — they will appear here automatically
-            </p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -166,9 +191,7 @@ export default async function MembersPage() {
                       </span>
                     ) : (
                       <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
-                        entry.is_active
-                          ? "text-emerald-700 bg-emerald-50"
-                          : "text-muted-foreground bg-muted"
+                        entry.is_active ? "text-emerald-700 bg-emerald-50" : "text-muted-foreground bg-muted"
                       }`}>
                         {entry.is_active ? <UserCheck className="w-3 h-3" /> : <UserX className="w-3 h-3" />}
                         {entry.is_active ? "Active" : "Inactive"}

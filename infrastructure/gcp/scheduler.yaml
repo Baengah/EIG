@@ -1,0 +1,38 @@
+# GCP Cloud Scheduler — Daily NGX price scraper
+# Runs at 5:00pm WAT (16:00 UTC) Monday–Friday
+#
+# One-time setup (run once via gcloud, not on every deploy):
+#
+#   gcloud scheduler jobs create http eig-ngx-price-scraper \
+#     --location=us-central1 \
+#     --schedule="0 16 * * 1-5" \
+#     --time-zone="UTC" \
+#     --uri="https://equityinvestmentgroup.club/api/scrape/ngx" \
+#     --http-method=POST \
+#     --headers="Authorization=Bearer YOUR_SCRAPER_API_KEY,Content-Type=application/json" \
+#     --message-body='{"trigger":"cron"}' \
+#     --attempt-deadline=60s \
+#     --description="Daily NGX equity price scrape at 5pm WAT"
+#
+# To update the job after deploy:
+#   gcloud scheduler jobs update http eig-ngx-price-scraper --location=us-central1 ...
+#
+# To run manually:
+#   gcloud scheduler jobs run eig-ngx-price-scraper --location=us-central1
+
+name: eig-ngx-price-scraper
+description: "Daily NGX equity price scrape — 5pm WAT (4pm UTC), Mon-Fri"
+schedule: "0 16 * * 1-5"
+timeZone: "UTC"
+target:
+  httpTarget:
+    uri: "https://equityinvestmentgroup.club/api/scrape/ngx"
+    httpMethod: POST
+    headers:
+      Content-Type: "application/json"
+      Authorization: "Bearer ${SCRAPER_API_KEY}"
+    body: '{"trigger":"cron"}'
+attemptDeadline: "60s"
+retryConfig:
+  retryCount: 2
+  minBackoffDuration: "10s"

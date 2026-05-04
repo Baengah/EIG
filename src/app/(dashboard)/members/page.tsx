@@ -1,6 +1,7 @@
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { Header } from "@/components/layout/Header";
 import { Users, UserCheck, UserX, Mail, Phone, ShieldCheck, Clock } from "lucide-react";
+import type { User } from "@supabase/supabase-js";
 
 export const revalidate = 60;
 
@@ -11,15 +12,15 @@ function normalizeName(s: string) {
 // Match names where last name is identical and one first name is a suffix/prefix of the other.
 // Handles "Tobi Amida" ↔ "Oluwatobi Paul Amida" (tobi ∈ oluwatobi).
 function fuzzyNameMatch(
-  authUsers: ReturnType<typeof Array.prototype.map>,
+  authUsers: User[],
   memberName: string,
   excludeIds: Set<string>
-): (typeof authUsers)[number] | undefined {
+): User | undefined {
   const mParts = normalizeName(memberName).split(" ").filter(Boolean);
   if (mParts.length < 2) return undefined;
   const mFirst = mParts[0];
   const mLast = mParts[mParts.length - 1];
-  return (authUsers as Array<{ id: string; user_metadata?: Record<string, unknown> }>).find(u => {
+  return authUsers.find(u => {
     if (excludeIds.has(u.id)) return false;
     const raw = u.user_metadata?.full_name as string | undefined;
     if (!raw) return false;

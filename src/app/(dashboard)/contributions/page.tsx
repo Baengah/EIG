@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { Header } from "@/components/layout/Header";
 import { formatCurrency, formatPercent, isPositive } from "@/lib/utils";
 import {
-  TrendingUp, TrendingDown, Wallet, Users, ArrowDownRight, ArrowUpRight,
+  TrendingUp, TrendingDown, Wallet, ArrowDownRight, ArrowUpRight,
   Landmark, Receipt, Building2,
 } from "lucide-react";
 import { RecordContributionButton } from "@/components/contributions/RecordContributionButton";
@@ -21,6 +21,7 @@ const CATEGORY_META: Record<string, { label: string; color: string; income: bool
 
 export default async function ContributionsPage() {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
 
   const [membersRes, contribsRes, summaryRes, brokersRes, ledgerRes, txnsRes, profileRes] = await Promise.all([
     supabase.from("members").select("id, full_name, member_number").order("full_name"),
@@ -32,11 +33,7 @@ export default async function ContributionsPage() {
     supabase.from("broker_accounts").select("cash_balance").eq("is_active", true),
     supabase.from("bank_ledger").select("*").order("entry_date", { ascending: false }),
     supabase.from("transactions").select("net_amount").eq("transaction_type", "dividend"),
-    supabase.auth.getUser().then(({ data: { user } }) =>
-      user
-        ? supabase.from("profiles").select("role").eq("id", user.id).single()
-        : Promise.resolve({ data: null })
-    ),
+    user ? supabase.from("profiles").select("role").eq("id", user.id).single() : null,
   ]);
 
   const members = membersRes.data ?? [];
@@ -48,7 +45,7 @@ export default async function ContributionsPage() {
   const summary = summaryRes.data;
   const brokers = brokersRes.data ?? [];
   const ledger = ledgerRes.data ?? [];
-  const isAdmin = profileRes.data?.role === "admin";
+  const isAdmin = profileRes?.data?.role === "admin";
 
   // ── Portfolio metrics ──────────────────────────────────────────
   const portfolioValue = summary?.total_value ?? 0;

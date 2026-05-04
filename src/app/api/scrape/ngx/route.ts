@@ -33,17 +33,12 @@ export async function POST(request: Request) {
 }
 
 // ── NGX doclib REST API ────────────────────────────────────────────────────────
-// The NGX exchange has multiple market boards. Each board must be fetched
-// separately — the empty market= param only returns one segment (~85 stocks).
-// We fetch all known boards in parallel and merge results.
-const NGX_BOARDS = ["", "PREMIUM", "MAIN", "GROWTH", "ASeM"];
-
-function ngxEquitiesUrl(market: string) {
-  return (
-    "https://doclib.ngxgroup.com/REST/api/statistics/equities/" +
-    `?market=${encodeURIComponent(market)}&sector=&orderby=&pageSize=300&pageNo=0`
-  );
-}
+// pageSize=1000 returns all 146 listed equities across all boards.
+// pageSize=300 only returns the ~85 stocks that traded on the default board today,
+// silently excluding Premium Board stocks (MTNN, ARADEL, etc.).
+const NGX_EQUITIES_URL =
+  "https://doclib.ngxgroup.com/REST/api/statistics/equities/" +
+  "?market=&sector=&orderby=&pageSize=1000&pageNo=0";
 
 const NGX_LEGACY_URL =
   "https://doclib.ngxgroup.com/REST/api/statistics/ticker" +
@@ -94,7 +89,14 @@ function parseRow(row: ApiRow, fallbackDate: string, source: string): PriceRow |
     .replace(/[^A-Za-z0-9]/g, "").toUpperCase();
   if (!ticker || ticker.length > 20) return null;
 
-  const close = parseNum(pick(row, "ClosePrice", "ClosingPrice", "Close", "LastTradedPrice", "Value"));
+  // Equities endpoint: ClosePrice is null intraday; fall back to PrevClosingPrice.
+  // Never use Value here — for the equities endpoint Value is turnover (₦ billions),
+  // not price. For the legacy ticker endpoint Value IS the price, but that endpoint
+  // is only used when the equities endpoint returns nothing.
+  const isLegacy = source === "ngx_legacy";
+  const close = isLegacy
+    ? parseNum(pick(row, "Value", "ClosePrice", "ClosingPrice", "Close", "LastTradedPrice"))
+    : parseNum(pick(row, "ClosePrice", "ClosingPrice", "Close", "LastTradedPrice", "PrevClosingPrice", "OpeningPrice"));
   if (!close || close <= 0) return null;
 
   const rowDate = pick(row, "TradeDate", "Date", "TradingDate");
@@ -102,13 +104,13 @@ function parseRow(row: ApiRow, fallbackDate: string, source: string): PriceRow |
 
   return {
     ticker, tradeDate, close, source,
-    open:      parseNum(pick(row, "OpenPrice", "OpeningPrice", "Open")),
+    open:      parseNum(pick(row, "OpeningPrice", "OpenPrice", "Open")),
     high:      parseNum(pick(row, "HighPrice", "DayHigh", "High")),
     low:       parseNum(pick(row, "LowPrice", "DayLow", "Low")),
     change:    parseNum(pick(row, "Change", "PriceChange")),
     changePct: parseNum(pick(row, "PercChange", "PercentageChange", "ChangePct")),
     volume:    parseNum(pick(row, "Volume", "VolumeTraded")),
-    value:     parseNum(pick(row, "Value", "Turnover", "TotalValue")),
+    value:     isLegacy ? null : parseNum(pick(row, "Value", "Turnover", "TotalValue")),
   };
 }
 
@@ -137,111 +139,29 @@ async function fetchRows(url: string, fallbackDate: string, source: string): Pro
   }
 }
 
-// ── Yahoo Finance fallback for specific tickers missing from doclib ────────────
-// NGX stocks trade on Yahoo Finance with a .LG suffix (Lagos Stock Exchange)
-async function fetchYahooPrice(ticker: string, today: string): Promise<PriceRow | null> {
-  const symbol = `${ticker}.LG`;
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=5d`;
-  try {
-    const res = await fetch(url, {
-      headers: {
-        "User-Agent": "Mozilla/5.0",
-        Accept: "application/json",
-      },
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (!res.ok) return null;
-    const data = await res.json() as Record<string, unknown>;
-    const result = (data?.chart as Record<string, unknown>)?.result as unknown[];
-    if (!Array.isArray(result) || result.length === 0) return null;
-
-    const chart = result[0] as Record<string, unknown>;
-    const timestamps = chart.timestamp as number[] | undefined;
-    const quote = ((chart.indicators as Record<string, unknown>)?.quote as Record<string, unknown>[])?.[0];
-    if (!timestamps?.length || !quote) return null;
-
-    // Find the most recent trading day with a valid close
-    for (let i = timestamps.length - 1; i >= 0; i--) {
-      const close = (quote.close as (number | null)[])?.[i];
-      if (!close || close <= 0) continue;
-      const tradeDate = new Date(timestamps[i] * 1000).toISOString().slice(0, 10);
-      return {
-        ticker, tradeDate, close, source: "yahoo_finance",
-        open:      (quote.open  as (number | null)[])?.[i] ?? null,
-        high:      (quote.high  as (number | null)[])?.[i] ?? null,
-        low:       (quote.low   as (number | null)[])?.[i] ?? null,
-        change: null, changePct: null,
-        volume:    (quote.volume as (number | null)[])?.[i] ?? null,
-        value: null,
-      };
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
 async function scrapeNGX() {
   const supabase = await createServiceClient();
   const today = new Date().toISOString().split("T")[0];
 
-  // Fetch all NGX market boards in parallel and merge by ticker (first seen wins)
-  const boardResults = await Promise.allSettled(
-    NGX_BOARDS.map((m) => fetchRows(ngxEquitiesUrl(m), today, `ngx_doclib_${m || "default"}`))
-  );
-
-  const priceMap = new Map<string, PriceRow>();
-  let totalFetched = 0;
-  const boardCounts: Record<string, number> = {};
-
-  for (let i = 0; i < boardResults.length; i++) {
-    const result = boardResults[i];
-    const boardName = NGX_BOARDS[i] || "default";
-    if (result.status === "fulfilled" && result.value) {
-      const rows = result.value;
-      boardCounts[boardName] = rows.length;
-      totalFetched += rows.length;
-      for (const row of rows) {
-        if (!priceMap.has(row.ticker)) priceMap.set(row.ticker, row);
-      }
-    } else {
-      boardCounts[boardName] = 0;
-    }
+  // pageSize=1000 returns all 146 listed equities (pageSize=300 only returns ~85,
+  // silently omitting Premium Board stocks like MTNN and stocks with null ClosePrice).
+  let rows = await fetchRows(NGX_EQUITIES_URL, today, "ngx_doclib");
+  if (!rows || rows.length === 0) {
+    rows = await fetchRows(NGX_LEGACY_URL, today, "ngx_legacy");
   }
-
-  // If no board data at all, fall back to legacy ticker endpoint
-  if (priceMap.size === 0) {
-    const legacyRows = await fetchRows(NGX_LEGACY_URL, today, "ngx_legacy");
-    if (legacyRows) {
-      for (const row of legacyRows) priceMap.set(row.ticker, row);
-      totalFetched = legacyRows.length;
-    }
-  }
-
-  if (priceMap.size === 0) {
+  if (!rows || rows.length === 0) {
     return { updated: 0, message: "NGX doclib API returned no data — market may be closed" };
   }
+
+  const priceMap = new Map(rows.map((r) => [r.ticker, r]));
 
   // Build a map of DB ticker → stock ID
   const { data: stocks } = await supabase.from("stocks").select("id, ticker").eq("is_active", true);
   const tickerMap = new Map(stocks?.map((s) => [s.ticker.toUpperCase(), s.id]) ?? []);
 
-  // For any portfolio tickers still missing from doclib, try Yahoo Finance
-  const missingTickers = Array.from(tickerMap.keys()).filter((t) => !priceMap.has(t));
-  if (missingTickers.length > 0) {
-    const yahooResults = await Promise.allSettled(
-      missingTickers.map((t) => fetchYahooPrice(t, today))
-    );
-    for (const result of yahooResults) {
-      if (result.status === "fulfilled" && result.value) {
-        priceMap.set(result.value.ticker, result.value);
-      }
-    }
-  }
-
   let updated = 0;
   const skipped: string[] = [];
-  const tradeDate = priceMap.values().next().value?.tradeDate ?? today;
+  const tradeDate = rows[0].tradeDate;
 
   for (const [ticker, stockId] of Array.from(tickerMap)) {
     const row = priceMap.get(ticker);
@@ -270,10 +190,9 @@ async function scrapeNGX() {
 
   return {
     updated,
-    total_fetched: priceMap.size,
+    total_fetched: rows.length,
     trade_date: tradeDate,
     skipped,
-    board_counts: boardCounts,
-    all_tickers: allTickers,
+    all_tickers: Array.from(priceMap.keys()).sort(),
   };
 }

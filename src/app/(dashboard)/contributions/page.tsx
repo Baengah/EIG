@@ -90,12 +90,60 @@ export default async function ContributionsPage() {
     })
     .sort((a, b) => b.contributed - a.contributed);
 
-  const METHOD_LABELS: Record<string, string> = {
-    bank_transfer: "Bank Transfer",
-    online: "Online",
-    cash: "Cash",
-    other: "Other",
+  // ── Unified account statement ─────────────────────────────────
+  type StatementEntry = {
+    id: string;
+    date: string;
+    description: string;
+    category: string;
+    debit: number;
+    credit: number;
+    reference: string | null;
+    balance: number;
   };
+
+  const rawEntries: Omit<StatementEntry, "balance">[] = [];
+
+  for (const c of contribs) {
+    const member = memberMap.get(c.member_id);
+    rawEntries.push({
+      id: `c_${c.id}`,
+      date: c.contribution_date,
+      description: member ? `Contribution — ${member.full_name}` : "Contribution",
+      category: "contribution",
+      debit: 0,
+      credit: Number(c.amount),
+      reference: c.bank_reference || c.notes || null,
+    });
+  }
+
+  for (const e of ledger) {
+    rawEntries.push({
+      id: `b_${e.id}`,
+      date: e.entry_date,
+      description: e.description,
+      category: e.category,
+      debit: e.amount < 0 ? Math.abs(e.amount) : 0,
+      credit: e.amount > 0 ? e.amount : 0,
+      reference: e.bank_reference || null,
+    });
+  }
+
+  // Sort oldest-first for running balance computation
+  rawEntries.sort((a, b) => a.date.localeCompare(b.date));
+
+  let runningBalance = 0;
+  const statementAsc: StatementEntry[] = rawEntries.map(e => {
+    runningBalance += e.credit - e.debit;
+    return { ...e, balance: runningBalance };
+  });
+
+  const cashAtBank = runningBalance;
+  // Display newest-first (like a bank statement)
+  const statement = [...statementAsc].reverse();
+
+  const totalDebits  = rawEntries.reduce((s, e) => s + e.debit,  0);
+  const totalCredits = rawEntries.reduce((s, e) => s + e.credit, 0);
 
   return (
     <div>
@@ -271,145 +319,108 @@ export default async function ContributionsPage() {
           )}
         </div>
 
-        {/* ── Bank Ledger ─────────────────────────────────────── */}
+        {/* ── Account Statement ────────────────────────────────── */}
         <div className="bg-card border border-border rounded-xl overflow-hidden">
-          <div className="px-5 py-4 border-b border-border flex items-center justify-between">
+          <div className="px-5 py-4 border-b border-border flex items-start justify-between gap-4">
             <div>
               <div className="flex items-center gap-2">
                 <Landmark className="w-4 h-4 text-primary" />
-                <h3 className="font-semibold text-foreground">Bank Ledger</h3>
+                <h3 className="font-semibold text-foreground">Account Statement</h3>
               </div>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Capitalised interest, bank charges, taxes, and broker transfers from the group account
+                {statement.length} entries · all contributions, interest, charges, taxes, and broker transfers
               </p>
             </div>
-            {totalBankCosts > 0 && (
-              <div className="text-right text-sm">
-                <p className="text-xs text-muted-foreground">Net bank impact</p>
-                <p className={`font-semibold ${bankIncome - totalBankCosts >= 0 ? "text-gain" : "text-loss"}`}>
-                  {bankIncome - totalBankCosts >= 0 ? "+" : ""}{formatCurrency(bankIncome - totalBankCosts)}
+            <div className="flex items-center gap-6 shrink-0 text-right text-sm">
+              <div>
+                <p className="text-xs text-muted-foreground">Total Credits</p>
+                <p className="font-semibold text-gain">{formatCurrency(totalCredits)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Total Debits</p>
+                <p className="font-semibold text-loss">{formatCurrency(totalDebits)}</p>
+              </div>
+              <div className="pl-4 border-l border-border">
+                <p className="text-xs text-muted-foreground">Cash at Bank</p>
+                <p className={`text-lg font-bold ${cashAtBank >= 0 ? "text-foreground" : "text-loss"}`}>
+                  {formatCurrency(cashAtBank)}
                 </p>
               </div>
-            )}
+            </div>
           </div>
 
-          {ledger.length === 0 ? (
+          {statement.length === 0 ? (
             <div className="p-10 text-center">
               <Receipt className="w-8 h-8 text-muted-foreground mx-auto mb-3" />
-              <p className="font-medium text-foreground">No bank entries recorded yet</p>
+              <p className="font-medium text-foreground">No entries yet</p>
               <p className="text-sm text-muted-foreground mt-1">
-                Add entries for capitalised interest, COT charges, VAT, stamp duty, and transfers to broker
+                Record a contribution or add a bank entry (interest, charges, taxes) to start the statement
               </p>
-              {isAdmin && (
-                <div className="mt-4 flex justify-center">
-                  <AddBankEntryButton />
-                </div>
-              )}
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-muted/30">
+                <thead className="bg-muted/30 sticky top-0">
                   <tr>
-                    <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground">Date</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Category</th>
+                    <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground whitespace-nowrap">Date</th>
                     <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Description</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Reference</th>
-                    <th className="text-right px-5 py-3 text-xs font-medium text-muted-foreground">Amount</th>
+                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Type</th>
+                    <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground">Debit (₦)</th>
+                    <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground">Credit (₦)</th>
+                    <th className="text-right px-5 py-3 text-xs font-medium text-muted-foreground">Balance (₦)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {ledger.map(entry => {
-                    const meta = CATEGORY_META[entry.category] ?? { label: entry.category, color: "text-foreground", income: entry.amount > 0 };
+                  {statement.map((entry, i) => {
+                    const meta = CATEGORY_META[entry.category] ?? { label: entry.category, color: "text-muted-foreground", income: entry.credit > 0 };
+                    const isFirst = i === 0;
                     return (
-                      <tr key={entry.id} className="hover:bg-muted/20 transition-colors">
-                        <td className="px-5 py-3 text-muted-foreground whitespace-nowrap">
-                          {new Date(entry.entry_date).toLocaleDateString("en-NG", { day: "2-digit", month: "short", year: "numeric" })}
+                      <tr key={entry.id} className={`hover:bg-muted/20 transition-colors ${isFirst ? "bg-muted/10" : ""}`}>
+                        <td className="px-5 py-3 text-muted-foreground whitespace-nowrap text-xs">
+                          {new Date(entry.date).toLocaleDateString("en-NG", { day: "2-digit", month: "short", year: "numeric" })}
                         </td>
                         <td className="px-4 py-3">
-                          <span className={`text-xs font-medium ${meta.color}`}>{meta.label}</span>
+                          <p className="text-foreground leading-tight">{entry.description}</p>
+                          {entry.reference && (
+                            <p className="text-xs text-muted-foreground mt-0.5">{entry.reference}</p>
+                          )}
                         </td>
-                        <td className="px-4 py-3 text-foreground">{entry.description}</td>
-                        <td className="px-4 py-3 text-xs text-muted-foreground">{entry.bank_reference ?? "—"}</td>
-                        <td className={`px-5 py-3 text-right font-medium ${entry.amount >= 0 ? "text-gain" : "text-loss"}`}>
-                          {entry.amount >= 0 ? "+" : ""}{formatCurrency(Math.abs(entry.amount))}
+                        <td className="px-4 py-3">
+                          <span className={`text-xs font-medium ${
+                            entry.category === "contribution" ? "text-primary" : meta.color
+                          }`}>
+                            {entry.category === "contribution" ? "Contribution" : meta.label}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right text-loss">
+                          {entry.debit > 0 ? formatCurrency(entry.debit) : ""}
+                        </td>
+                        <td className="px-4 py-3 text-right text-gain">
+                          {entry.credit > 0 ? formatCurrency(entry.credit) : ""}
+                        </td>
+                        <td className={`px-5 py-3 text-right font-medium tabular-nums ${
+                          entry.balance >= 0 ? "text-foreground" : "text-loss"
+                        } ${isFirst ? "font-bold" : ""}`}>
+                          {formatCurrency(entry.balance)}
                         </td>
                       </tr>
                     );
                   })}
                 </tbody>
-                {ledger.length > 0 && (
-                  <tfoot className="bg-muted/20 border-t border-border">
-                    <tr>
-                      <td colSpan={4} className="px-5 py-3 text-xs font-semibold text-muted-foreground">
-                        Net ({ledger.filter(e => e.amount > 0).length} income · {ledger.filter(e => e.amount < 0).length} expense entries)
-                      </td>
-                      <td className={`px-5 py-3 text-right font-bold ${ledger.reduce((s, e) => s + e.amount, 0) >= 0 ? "text-gain" : "text-loss"}`}>
-                        {ledger.reduce((s, e) => s + e.amount, 0) >= 0 ? "+" : ""}
-                        {formatCurrency(Math.abs(ledger.reduce((s, e) => s + e.amount, 0)))}
-                      </td>
-                    </tr>
-                  </tfoot>
-                )}
-              </table>
-            </div>
-          )}
-        </div>
-
-        {/* ── Contribution Log ─────────────────────────────────── */}
-        {contribs.length > 0 && (
-          <div className="bg-card border border-border rounded-xl overflow-hidden">
-            <div className="px-5 py-4 border-b border-border">
-              <h3 className="font-semibold text-foreground">Contribution Log</h3>
-              <p className="text-xs text-muted-foreground mt-0.5">{contribs.length} record{contribs.length !== 1 ? "s" : ""}</p>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/30">
+                <tfoot className="border-t-2 border-border bg-muted/30">
                   <tr>
-                    <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground">Date</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Member</th>
-                    <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground">Amount</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Method</th>
-                    <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground">Reference / Notes</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {contribs.map(c => {
-                    const member = memberMap.get(c.member_id);
-                    return (
-                      <tr key={c.id} className="hover:bg-muted/20 transition-colors">
-                        <td className="px-5 py-3 text-foreground whitespace-nowrap">
-                          {new Date(c.contribution_date).toLocaleDateString("en-NG", { day: "2-digit", month: "short", year: "numeric" })}
-                        </td>
-                        <td className="px-4 py-3">
-                          <p className="font-medium text-foreground">{member?.full_name ?? "Unknown"}</p>
-                          <p className="text-xs text-muted-foreground">{member?.member_number}</p>
-                        </td>
-                        <td className="px-4 py-3 text-right font-medium text-foreground">
-                          {formatCurrency(Number(c.amount))}
-                        </td>
-                        <td className="px-4 py-3 text-muted-foreground">
-                          {METHOD_LABELS[c.payment_method] ?? c.payment_method}
-                        </td>
-                        <td className="px-5 py-3 text-muted-foreground text-xs">
-                          {c.bank_reference || c.notes || "—"}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-                <tfoot className="bg-muted/20 border-t border-border">
-                  <tr>
-                    <td colSpan={2} className="px-5 py-3 text-xs font-semibold text-muted-foreground">Total raised</td>
-                    <td className="px-4 py-3 text-right font-bold text-foreground">{formatCurrency(totalContributions)}</td>
-                    <td colSpan={2} />
+                    <td colSpan={3} className="px-5 py-3 text-xs font-semibold text-muted-foreground">
+                      Opening balance
+                    </td>
+                    <td className="px-4 py-3 text-right font-bold text-loss">{formatCurrency(totalDebits)}</td>
+                    <td className="px-4 py-3 text-right font-bold text-gain">{formatCurrency(totalCredits)}</td>
+                    <td className="px-5 py-3 text-right font-bold text-foreground">{formatCurrency(cashAtBank)}</td>
                   </tr>
                 </tfoot>
               </table>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );

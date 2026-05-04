@@ -178,8 +178,8 @@ async function scrapeNGX() {
 
   await supabase.rpc("create_portfolio_snapshot", { p_date: tradeDate });
 
-  // Sample of available tickers from API (helps diagnose name mismatches)
-  const availableSample = rows.slice(0, 20).map((r) => r.ticker);
+  // Full sorted ticker list from API — helps diagnose name mismatches
+  const allTickers = rows.map((r) => r.ticker).sort();
 
-  return { updated, total_fetched: rows.length, trade_date: tradeDate, skipped, available_sample: availableSample };
+  return { updated, total_fetched: rows.length, trade_date: tradeDate, skipped, all_tickers: allTickers };
 }

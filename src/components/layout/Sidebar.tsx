@@ -14,6 +14,7 @@ import {
   ChevronLeft,
   ChevronRight,
   LogOut,
+  AlertTriangle,
 } from "lucide-react";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
@@ -24,6 +25,7 @@ const navItems = [
   { href: "/portfolio", label: "Portfolio", icon: BarChart3 },
   { href: "/contributions", label: "Contributions", icon: Wallet },
   { href: "/transactions", label: "Transactions", icon: ArrowLeftRight },
+  { href: "/transactions/unmatched", label: "Unmatched Entries", icon: AlertTriangle },
   { href: "/members", label: "Members", icon: Users },
   { href: "/settings", label: "Settings", icon: Settings },
 ];

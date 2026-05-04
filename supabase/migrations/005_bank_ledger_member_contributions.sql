@@ -24,12 +24,20 @@ CREATE INDEX IF NOT EXISTS idx_member_contributions_date
 
 ALTER TABLE public.member_contributions ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "Members can view all member_contributions" ON public.member_contributions;
+-- Drop all pre-existing policies on this table (names vary depending on how it was created)
+DO $$
+DECLARE r RECORD;
+BEGIN
+  FOR r IN SELECT policyname FROM pg_policies WHERE tablename = 'member_contributions' AND schemaname = 'public'
+  LOOP
+    EXECUTE format('DROP POLICY IF EXISTS %I ON public.member_contributions', r.policyname);
+  END LOOP;
+END $$;
+
 CREATE POLICY "Members can view all member_contributions"
   ON public.member_contributions FOR SELECT
   USING (public.is_member());
 
-DROP POLICY IF EXISTS "Admins can manage member_contributions" ON public.member_contributions;
 CREATE POLICY "Admins can manage member_contributions"
   ON public.member_contributions FOR ALL
   USING (public.is_admin())
@@ -66,12 +74,19 @@ CREATE INDEX IF NOT EXISTS idx_bank_ledger_category
 
 ALTER TABLE public.bank_ledger ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "Members can view bank_ledger" ON public.bank_ledger;
+DO $$
+DECLARE r RECORD;
+BEGIN
+  FOR r IN SELECT policyname FROM pg_policies WHERE tablename = 'bank_ledger' AND schemaname = 'public'
+  LOOP
+    EXECUTE format('DROP POLICY IF EXISTS %I ON public.bank_ledger', r.policyname);
+  END LOOP;
+END $$;
+
 CREATE POLICY "Members can view bank_ledger"
   ON public.bank_ledger FOR SELECT
   USING (public.is_member());
 
-DROP POLICY IF EXISTS "Admins can manage bank_ledger" ON public.bank_ledger;
 CREATE POLICY "Admins can manage bank_ledger"
   ON public.bank_ledger FOR ALL
   USING (public.is_admin())

@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { Header } from "@/components/layout/Header";
 import { formatCurrency, formatPercent, isPositive } from "@/lib/utils";
 import {
@@ -10,49 +10,46 @@ import { AddBankEntryButton } from "@/components/contributions/AddBankEntryButto
 
 export const revalidate = 60;
 
-const CATEGORY_META: Record<string, { label: string; color: string; income: boolean }> = {
-  interest_income: { label: "Interest Income",   color: "text-gain",               income: true  },
-  other_income:    { label: "Other Income",       color: "text-gain",               income: true  },
-  bank_charge:     { label: "Bank Charges",       color: "text-amber-600",          income: false },
-  tax:             { label: "Taxes",              color: "text-rose-600",           income: false },
-  broker_transfer: { label: "Broker Transfer",    color: "text-muted-foreground",   income: false },
-  other_expense:   { label: "Other Expense",      color: "text-rose-600",           income: false },
+const CATEGORY_META: Record<string, { label: string; color: string }> = {
+  contribution:    { label: "Contribution",   color: "text-primary"           },
+  dividend:        { label: "Dividend",        color: "text-gain"              },
+  interest_income: { label: "Interest",        color: "text-gain"              },
+  other_income:    { label: "Other Income",    color: "text-gain"              },
+  bank_charge:     { label: "Bank Charges",    color: "text-amber-600"         },
+  tax:             { label: "Tax",             color: "text-rose-600"          },
+  broker_transfer: { label: "Broker Transfer", color: "text-muted-foreground"  },
+  other_expense:   { label: "Other Expense",   color: "text-rose-600"          },
 };
 
 export default async function ContributionsPage() {
-  const supabase = await createClient();
+  // Use service client for all data queries to bypass per-user RLS
+  const [supabase, svc] = await Promise.all([createClient(), createServiceClient()]);
   const { data: { user } } = await supabase.auth.getUser();
 
-  const [membersRes, contribsRes, summaryRes, brokersRes, ledgerRes, txnsRes, profileRes] = await Promise.all([
-    supabase.from("members").select("id, full_name, member_number").order("full_name"),
-    supabase
-      .from("member_contributions")
+  const [membersRes, contribsRes, summaryRes, brokersRes, ledgerRes, dividendsRes, profileRes] = await Promise.all([
+    svc.from("members").select("id, full_name, member_number").order("full_name"),
+    svc.from("member_contributions")
       .select("id, member_id, amount, contribution_date, payment_method, bank_reference, notes")
-      .order("contribution_date", { ascending: false }),
-    supabase.from("v_portfolio_summary").select("*").single(),
-    supabase.from("broker_accounts").select("cash_balance").eq("is_active", true),
-    supabase.from("bank_ledger").select("*").order("entry_date", { ascending: false }),
-    supabase.from("transactions").select("net_amount").eq("transaction_type", "dividend"),
+      .order("contribution_date", { ascending: true }),
+    svc.from("v_portfolio_summary").select("*").single(),
+    svc.from("broker_accounts").select("cash_balance").eq("is_active", true),
+    svc.from("bank_ledger").select("*").order("entry_date", { ascending: true }),
+    svc.from("transactions")
+      .select("id, transaction_date, net_amount, notes, contract_note_number, stocks(ticker, company_name)")
+      .eq("transaction_type", "dividend")
+      .order("transaction_date", { ascending: true }),
     user ? supabase.from("profiles").select("role").eq("id", user.id).single() : null,
   ]);
 
   const members = membersRes.data ?? [];
-  const activeMembers = members.filter(m => {
-    const contribMemberIds = new Set((contribsRes.data ?? []).map(c => c.member_id));
-    return contribMemberIds.has(m.id);
-  });
   const contribs = contribsRes.data ?? [];
   const summary = summaryRes.data;
   const brokers = brokersRes.data ?? [];
   const ledger = ledgerRes.data ?? [];
+  const dividends = dividendsRes.data ?? [];
   const isAdmin = profileRes?.data?.role === "admin";
 
-  // ── Portfolio metrics ──────────────────────────────────────────
-  const portfolioValue = summary?.total_value ?? 0;
-  const totalBrokerCash = brokers.reduce((s, b) => s + (b.cash_balance ?? 0), 0);
-  const totalDividends = (txnsRes.data ?? []).reduce((s, t) => s + (t.net_amount ?? 0), 0);
-
-  // ── Member contributions ───────────────────────────────────────
+  // ── Member lookup ──────────────────────────────────────────────
   const memberMap = new Map(members.map(m => [m.id, m]));
   const memberTotals = new Map<string, number>();
   for (const c of contribs) {
@@ -60,56 +57,52 @@ export default async function ContributionsPage() {
   }
   const totalContributions = Array.from(memberTotals.values()).reduce((a, b) => a + b, 0);
 
+  // ── Portfolio metrics ──────────────────────────────────────────
+  const portfolioValue    = summary?.total_value ?? 0;
+  const totalBrokerCash   = brokers.reduce((s, b) => s + (b.cash_balance ?? 0), 0);
+  const totalDividendsPaid = dividends.reduce((s, d) => s + (d.net_amount ?? 0), 0);
+
   // ── Bank ledger metrics ────────────────────────────────────────
-  const bankIncome    = ledger.filter(e => e.amount > 0).reduce((s, e) => s + e.amount, 0);
-  const bankCharges   = ledger.filter(e => e.amount < 0 && e.category === "bank_charge").reduce((s, e) => s + Math.abs(e.amount), 0);
-  const bankTaxes     = ledger.filter(e => e.amount < 0 && e.category === "tax").reduce((s, e) => s + Math.abs(e.amount), 0);
+  const bankIncome      = ledger.filter(e => e.amount > 0).reduce((s, e) => s + e.amount, 0);
+  const bankCharges     = ledger.filter(e => e.amount < 0 && e.category === "bank_charge").reduce((s, e) => s + Math.abs(e.amount), 0);
+  const bankTaxes       = ledger.filter(e => e.amount < 0 && e.category === "tax").reduce((s, e) => s + Math.abs(e.amount), 0);
   const brokerTransfers = ledger.filter(e => e.category === "broker_transfer").reduce((s, e) => s + Math.abs(e.amount), 0);
-  const totalBankCosts = bankCharges + bankTaxes;
+  const totalBankCosts  = bankCharges + bankTaxes;
 
   // ── True P&L ───────────────────────────────────────────────────
-  // Capital deployed = contributions + bank income - bank costs
-  // What we have = portfolio + cash at broker + dividends
-  const totalCapital = totalContributions + bankIncome;
-  const totalFriction = totalBankCosts;
-  const currentValue = portfolioValue + totalBrokerCash + totalDividends;
-  const netPL = currentValue - totalCapital + totalFriction; // friction reduces effective capital deployed
-  const netPLBase = totalCapital - totalFriction;
-  const netPLPct = netPLBase > 0 ? (netPL / netPLBase) * 100 : 0;
-  const plPositive = isPositive(netPL);
+  const currentValue = portfolioValue + totalBrokerCash + totalDividendsPaid;
+  const totalCapital  = totalContributions + bankIncome;
+  const netPLBase     = totalCapital - totalBankCosts;
+  const netPL         = currentValue - netPLBase;
+  const netPLPct      = netPLBase > 0 ? (netPL / netPLBase) * 100 : 0;
+  const plPositive    = isPositive(netPL);
 
   // ── Contributor P&L rows ───────────────────────────────────────
   const plRows = Array.from(memberTotals.entries())
     .map(([memberId, contributed]) => {
-      const sharePct = totalContributions > 0 ? contributed / totalContributions : 0;
+      const sharePct    = totalContributions > 0 ? contributed / totalContributions : 0;
       const attrPortfolio = sharePct * portfolioValue;
-      const attrGain = sharePct * (summary?.total_unrealized_gain_loss ?? 0);
-      const gainPct = contributed > 0 ? (attrGain / contributed) * 100 : 0;
-      const member = memberMap.get(memberId);
-      return { memberId, member, contributed, sharePct, attrPortfolio, attrGain, gainPct };
+      const attrGain    = sharePct * (summary?.total_unrealized_gain_loss ?? 0);
+      const gainPct     = contributed > 0 ? (attrGain / contributed) * 100 : 0;
+      return { memberId, member: memberMap.get(memberId), contributed, sharePct, attrPortfolio, attrGain, gainPct };
     })
     .sort((a, b) => b.contributed - a.contributed);
 
-  // ── Unified account statement ─────────────────────────────────
+  // ── Unified account statement (oldest-first for balance, display newest-first) ──
   type StatementEntry = {
-    id: string;
-    date: string;
-    description: string;
-    category: string;
-    debit: number;
-    credit: number;
-    reference: string | null;
-    balance: number;
+    id: string; date: string; description: string; category: string;
+    debit: number; credit: number; reference: string | null; balance: number;
   };
 
   const rawEntries: Omit<StatementEntry, "balance">[] = [];
 
+  // 1. Member contributions → credits
   for (const c of contribs) {
     const member = memberMap.get(c.member_id);
     rawEntries.push({
       id: `c_${c.id}`,
       date: c.contribution_date,
-      description: member ? `Contribution — ${member.full_name}` : "Contribution",
+      description: member ? `Contribution — ${member.full_name}` : "Member contribution",
       category: "contribution",
       debit: 0,
       credit: Number(c.amount),
@@ -117,6 +110,22 @@ export default async function ContributionsPage() {
     });
   }
 
+  // 2. Dividend payments → credits
+  for (const d of dividends) {
+    const ticker = (d.stocks as { ticker?: string; company_name?: string } | null)?.ticker;
+    const company = (d.stocks as { ticker?: string; company_name?: string } | null)?.company_name;
+    rawEntries.push({
+      id: `d_${d.id}`,
+      date: d.transaction_date,
+      description: ticker ? `Dividend — ${ticker}${company ? ` (${company})` : ""}` : "Dividend payment",
+      category: "dividend",
+      debit: 0,
+      credit: d.net_amount ?? 0,
+      reference: d.contract_note_number || d.notes || null,
+    });
+  }
+
+  // 3. Bank ledger entries (charges, interest, taxes, broker transfers)
   for (const e of ledger) {
     rawEntries.push({
       id: `b_${e.id}`,
@@ -129,25 +138,22 @@ export default async function ContributionsPage() {
     });
   }
 
-  // Sort oldest-first for running balance computation
-  rawEntries.sort((a, b) => a.date.localeCompare(b.date));
-
-  let runningBalance = 0;
+  // Sort oldest-first, compute running balance, then reverse for display
+  rawEntries.sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+  let running = 0;
   const statementAsc: StatementEntry[] = rawEntries.map(e => {
-    runningBalance += e.credit - e.debit;
-    return { ...e, balance: runningBalance };
+    running += e.credit - e.debit;
+    return { ...e, balance: running };
   });
 
-  const cashAtBank = runningBalance;
-  // Display newest-first (like a bank statement)
-  const statement = [...statementAsc].reverse();
-
+  const cashAtBank  = running;
+  const statement   = [...statementAsc].reverse();
   const totalDebits  = rawEntries.reduce((s, e) => s + e.debit,  0);
   const totalCredits = rawEntries.reduce((s, e) => s + e.credit, 0);
 
   return (
     <div>
-      <Header title="Contributions & P&L" subtitle="Capital raised, bank costs, and collective returns" />
+      <Header title="Contributions & P&L" subtitle="Capital raised, bank costs, dividends, and collective returns" />
       <div className="p-6 space-y-6">
 
         {/* ── True P&L Banner ─────────────────────────────────── */}
@@ -156,9 +162,7 @@ export default async function ContributionsPage() {
             <div>
               <p className="text-xs text-muted-foreground mb-1">Net Return on Capital (after all costs)</p>
               <div className="flex items-center gap-2">
-                {plPositive
-                  ? <TrendingUp className="w-5 h-5 text-gain" />
-                  : <TrendingDown className="w-5 h-5 text-loss" />}
+                {plPositive ? <TrendingUp className="w-5 h-5 text-gain" /> : <TrendingDown className="w-5 h-5 text-loss" />}
                 <p className={`text-3xl font-bold ${plPositive ? "text-gain" : "text-loss"}`}>
                   {plPositive ? "+" : ""}{formatCurrency(netPL)}
                 </p>
@@ -167,9 +171,9 @@ export default async function ContributionsPage() {
                 </span>
               </div>
               <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
-                Current value (Portfolio {formatCurrency(portfolioValue)} + Broker cash {formatCurrency(totalBrokerCash)} + Dividends {formatCurrency(totalDividends)})
+                Current value (Portfolio {formatCurrency(portfolioValue)} + Broker cash {formatCurrency(totalBrokerCash)} + Dividends {formatCurrency(totalDividendsPaid)})
                 {bankIncome > 0 && ` + Bank interest ${formatCurrency(bankIncome)}`}
-                {` − Capital raised ${formatCurrency(totalContributions)}`}
+                {` − Capital ${formatCurrency(totalContributions)}`}
                 {totalBankCosts > 0 && ` − Bank costs ${formatCurrency(totalBankCosts)}`}
               </p>
             </div>
@@ -181,8 +185,8 @@ export default async function ContributionsPage() {
                 </p>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">Dividends</p>
-                <p className="font-semibold text-gain">{formatCurrency(totalDividends)}</p>
+                <p className="text-xs text-muted-foreground">Dividends Received</p>
+                <p className="font-semibold text-gain">{formatCurrency(totalDividendsPaid)}</p>
               </div>
             </div>
           </div>
@@ -196,7 +200,9 @@ export default async function ContributionsPage() {
               <p className="text-xs text-muted-foreground">Member Contributions</p>
             </div>
             <p className="text-xl font-bold text-foreground">{formatCurrency(totalContributions)}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">{contribs.length} payment{contribs.length !== 1 ? "s" : ""} · {memberTotals.size} contributor{memberTotals.size !== 1 ? "s" : ""}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {contribs.length} payment{contribs.length !== 1 ? "s" : ""} · {memberTotals.size} contributor{memberTotals.size !== 1 ? "s" : ""}
+            </p>
           </div>
           <div className="bg-card border border-border rounded-xl p-4">
             <div className="flex items-center gap-2 mb-1">
@@ -204,7 +210,7 @@ export default async function ContributionsPage() {
               <p className="text-xs text-muted-foreground">Bank Income</p>
             </div>
             <p className="text-xl font-bold text-gain">{formatCurrency(bankIncome)}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">Interest &amp; other credits</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Interest &amp; credits</p>
           </div>
           <div className="bg-card border border-border rounded-xl p-4">
             <div className="flex items-center gap-2 mb-1">
@@ -233,14 +239,9 @@ export default async function ContributionsPage() {
         </div>
 
         {/* ── Record buttons ───────────────────────────────────── */}
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
-            {memberTotals.size} contributor{memberTotals.size !== 1 ? "s" : ""} · {contribs.length} payments
-          </p>
-          <div className="flex gap-2">
-            {isAdmin && <AddBankEntryButton />}
-            <RecordContributionButton members={activeMembers.length > 0 ? activeMembers : members} />
-          </div>
+        <div className="flex items-center justify-end gap-2">
+          {isAdmin && <AddBankEntryButton />}
+          <RecordContributionButton members={members} />
         </div>
 
         {/* ── Contributor P&L table ───────────────────────────── */}
@@ -251,12 +252,10 @@ export default async function ContributionsPage() {
               Ownership share proportional to contributions · Unrealized portfolio gains attributed pro-rata
             </p>
           </div>
-
           {plRows.length === 0 ? (
             <div className="p-12 text-center">
               <Wallet className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
               <p className="font-medium text-foreground">No contributions recorded yet</p>
-              <p className="text-sm text-muted-foreground mt-1">Record the first contribution to see P&L</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -321,17 +320,17 @@ export default async function ContributionsPage() {
 
         {/* ── Account Statement ────────────────────────────────── */}
         <div className="bg-card border border-border rounded-xl overflow-hidden">
-          <div className="px-5 py-4 border-b border-border flex items-start justify-between gap-4">
+          <div className="px-5 py-4 border-b border-border flex items-start justify-between gap-4 flex-wrap">
             <div>
               <div className="flex items-center gap-2">
                 <Landmark className="w-4 h-4 text-primary" />
                 <h3 className="font-semibold text-foreground">Account Statement</h3>
               </div>
               <p className="text-xs text-muted-foreground mt-0.5">
-                {statement.length} entries · all contributions, interest, charges, taxes, and broker transfers
+                {statement.length} entries — contributions, dividends, interest, charges, taxes, transfers
               </p>
             </div>
-            <div className="flex items-center gap-6 shrink-0 text-right text-sm">
+            <div className="flex items-center gap-6 text-right text-sm">
               <div>
                 <p className="text-xs text-muted-foreground">Total Credits</p>
                 <p className="font-semibold text-gain">{formatCurrency(totalCredits)}</p>
@@ -354,13 +353,13 @@ export default async function ContributionsPage() {
               <Receipt className="w-8 h-8 text-muted-foreground mx-auto mb-3" />
               <p className="font-medium text-foreground">No entries yet</p>
               <p className="text-sm text-muted-foreground mt-1">
-                Record a contribution or add a bank entry (interest, charges, taxes) to start the statement
+                Record contributions or add bank entries (interest, charges, taxes) to build the statement
               </p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-muted/30 sticky top-0">
+                <thead className="bg-muted/30">
                   <tr>
                     <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground whitespace-nowrap">Date</th>
                     <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Description</th>
@@ -372,10 +371,9 @@ export default async function ContributionsPage() {
                 </thead>
                 <tbody className="divide-y divide-border">
                   {statement.map((entry, i) => {
-                    const meta = CATEGORY_META[entry.category] ?? { label: entry.category, color: "text-muted-foreground", income: entry.credit > 0 };
-                    const isFirst = i === 0;
+                    const meta = CATEGORY_META[entry.category] ?? { label: entry.category, color: "text-muted-foreground" };
                     return (
-                      <tr key={entry.id} className={`hover:bg-muted/20 transition-colors ${isFirst ? "bg-muted/10" : ""}`}>
+                      <tr key={entry.id} className={`hover:bg-muted/20 transition-colors ${i === 0 ? "bg-muted/10" : ""}`}>
                         <td className="px-5 py-3 text-muted-foreground whitespace-nowrap text-xs">
                           {new Date(entry.date).toLocaleDateString("en-NG", { day: "2-digit", month: "short", year: "numeric" })}
                         </td>
@@ -386,21 +384,17 @@ export default async function ContributionsPage() {
                           )}
                         </td>
                         <td className="px-4 py-3">
-                          <span className={`text-xs font-medium ${
-                            entry.category === "contribution" ? "text-primary" : meta.color
-                          }`}>
-                            {entry.category === "contribution" ? "Contribution" : meta.label}
-                          </span>
+                          <span className={`text-xs font-medium ${meta.color}`}>{meta.label}</span>
                         </td>
-                        <td className="px-4 py-3 text-right text-loss">
+                        <td className="px-4 py-3 text-right font-mono text-xs text-loss">
                           {entry.debit > 0 ? formatCurrency(entry.debit) : ""}
                         </td>
-                        <td className="px-4 py-3 text-right text-gain">
+                        <td className="px-4 py-3 text-right font-mono text-xs text-gain">
                           {entry.credit > 0 ? formatCurrency(entry.credit) : ""}
                         </td>
-                        <td className={`px-5 py-3 text-right font-medium tabular-nums ${
+                        <td className={`px-5 py-3 text-right font-mono text-xs tabular-nums font-medium ${
                           entry.balance >= 0 ? "text-foreground" : "text-loss"
-                        } ${isFirst ? "font-bold" : ""}`}>
+                        } ${i === 0 ? "font-bold" : ""}`}>
                           {formatCurrency(entry.balance)}
                         </td>
                       </tr>
@@ -410,17 +404,18 @@ export default async function ContributionsPage() {
                 <tfoot className="border-t-2 border-border bg-muted/30">
                   <tr>
                     <td colSpan={3} className="px-5 py-3 text-xs font-semibold text-muted-foreground">
-                      Opening balance
+                      Totals ({rawEntries.length} entries)
                     </td>
-                    <td className="px-4 py-3 text-right font-bold text-loss">{formatCurrency(totalDebits)}</td>
-                    <td className="px-4 py-3 text-right font-bold text-gain">{formatCurrency(totalCredits)}</td>
-                    <td className="px-5 py-3 text-right font-bold text-foreground">{formatCurrency(cashAtBank)}</td>
+                    <td className="px-4 py-3 text-right font-bold text-loss text-xs">{formatCurrency(totalDebits)}</td>
+                    <td className="px-4 py-3 text-right font-bold text-gain text-xs">{formatCurrency(totalCredits)}</td>
+                    <td className="px-5 py-3 text-right font-bold text-foreground text-xs">{formatCurrency(cashAtBank)}</td>
                   </tr>
                 </tfoot>
               </table>
             </div>
           )}
         </div>
+
       </div>
     </div>
   );

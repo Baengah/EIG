@@ -46,11 +46,10 @@ BEGIN
     RAISE EXCEPTION 'Chapel Hill Denham broker account not found — add it in Settings first';
   END IF;
 
-  -- Upsert each holding (DELETE + INSERT pattern to replace stale data)
-  -- We delete only holdings for these specific stocks to avoid wiping unrelated data
+  -- Delete ALL existing holdings for these stocks (unique constraint on stock_id
+  -- means we can only have one holding row per stock regardless of broker)
   DELETE FROM public.holdings
-  WHERE broker_account_id = v_broker_id
-    AND asset_type = 'stock'
+  WHERE asset_type = 'stock'
     AND stock_id IN (SELECT id FROM public.stocks WHERE ticker IN (
       'ACCESSCORP','ARADEL','FCMB','GTCO','MTNN','NGXGROUP','PRESCO','ZENITHBANK'
     ));

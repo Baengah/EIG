@@ -152,11 +152,12 @@ async function scrapeNGX() {
   const priceMap = new Map(rows.map((r) => [r.ticker, r]));
 
   let updated = 0;
+  const skipped: string[] = [];
   const tradeDate = rows[0].tradeDate;
 
   for (const [ticker, stockId] of Array.from(tickerMap)) {
     const row = priceMap.get(ticker);
-    if (!row) continue;
+    if (!row) { skipped.push(ticker); continue; }
 
     const { error } = await supabase.from("stock_prices").upsert({
       stock_id: stockId,
@@ -177,5 +178,8 @@ async function scrapeNGX() {
 
   await supabase.rpc("create_portfolio_snapshot", { p_date: tradeDate });
 
-  return { updated, total_fetched: rows.length, trade_date: tradeDate };
+  // Sample of available tickers from API (helps diagnose name mismatches)
+  const availableSample = rows.slice(0, 20).map((r) => r.ticker);
+
+  return { updated, total_fetched: rows.length, trade_date: tradeDate, skipped, available_sample: availableSample };
 }

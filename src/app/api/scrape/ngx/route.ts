@@ -58,9 +58,9 @@ type ApiRow = Record<string, unknown>;
 
 function pick(row: ApiRow, ...keys: string[]): unknown {
   for (const k of keys) {
-    if (k in row) return row[k];
+    if (k in row && row[k] != null) return row[k];
     const found = Object.keys(row).find((rk) => rk.toLowerCase() === k.toLowerCase());
-    if (found) return row[found];
+    if (found && row[found] != null) return row[found];
   }
   return undefined;
 }

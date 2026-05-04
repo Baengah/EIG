@@ -513,6 +513,7 @@ export type Database = {
           account_number: string;
           account_name: string;
           currency: string;
+          cash_balance: number;
           is_active: boolean;
           is_primary: boolean;
           created_at: string;
@@ -523,6 +524,7 @@ export type Database = {
           account_number: string;
           account_name: string;
           currency?: string;
+          cash_balance?: number;
           is_active?: boolean;
           is_primary?: boolean;
         };
@@ -532,6 +534,7 @@ export type Database = {
           account_number?: string;
           account_name?: string;
           currency?: string;
+          cash_balance?: number;
           is_active?: boolean;
           is_primary?: boolean;
         };

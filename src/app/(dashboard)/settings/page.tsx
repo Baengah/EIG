@@ -1,10 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
 import { Header } from "@/components/layout/Header";
 import { BrokerAccountForm } from "@/components/settings/BrokerAccountForm";
+import { BrokerCashButton } from "@/components/settings/BrokerCashButton";
 import { BankAccountForm } from "@/components/settings/BankAccountForm";
 import { TriggerScrapeButton } from "@/components/settings/TriggerScrapeButton";
 import { InviteUserButton } from "@/components/settings/InviteUserButton";
 import { Building2, Landmark, RefreshCw, Users } from "lucide-react";
+import { formatCurrency } from "@/lib/utils";
 
 export const revalidate = 60;
 
@@ -40,9 +42,20 @@ export default async function SettingsPage() {
                 <p className="font-medium text-foreground">{b.broker_name}</p>
                 <p className="text-xs text-muted-foreground">{b.account_name} · {b.account_number}</p>
               </div>
-              <span className={`text-xs px-2 py-0.5 rounded-full ${b.is_active ? "bg-emerald-50 text-emerald-700" : "bg-muted text-muted-foreground"}`}>
-                {b.is_active ? "Active" : "Inactive"}
-              </span>
+              <div className="flex items-center gap-3">
+                <div className="text-right">
+                  <p className="text-xs text-muted-foreground">Cash at broker</p>
+                  <p className="font-semibold text-foreground">{formatCurrency(b.cash_balance ?? 0)}</p>
+                </div>
+                <BrokerCashButton
+                  brokerId={b.id}
+                  brokerName={b.broker_name}
+                  currentBalance={b.cash_balance ?? 0}
+                />
+                <span className={`text-xs px-2 py-0.5 rounded-full ${b.is_active ? "bg-emerald-50 text-emerald-700" : "bg-muted text-muted-foreground"}`}>
+                  {b.is_active ? "Active" : "Inactive"}
+                </span>
+              </div>
             </div>
           ))}
           <div className="mt-3">

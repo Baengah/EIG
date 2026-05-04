@@ -63,10 +63,13 @@ export default async function ContributionsPage() {
   const totalDividendsPaid = dividends.reduce((s, d) => s + (d.net_amount ?? 0), 0);
 
   // ── Bank ledger metrics ────────────────────────────────────────
-  const bankIncome      = ledger.filter(e => e.amount > 0).reduce((s, e) => s + e.amount, 0);
+  // Exclude broker_transfer from income — those are internal Zenith↔CHD movements, not P&L events
+  const bankIncome      = ledger.filter(e => e.amount > 0 && e.category !== "broker_transfer").reduce((s, e) => s + e.amount, 0);
   const bankCharges     = ledger.filter(e => e.amount < 0 && e.category === "bank_charge").reduce((s, e) => s + Math.abs(e.amount), 0);
   const bankTaxes       = ledger.filter(e => e.amount < 0 && e.category === "tax").reduce((s, e) => s + Math.abs(e.amount), 0);
-  const brokerTransfers = ledger.filter(e => e.category === "broker_transfer").reduce((s, e) => s + Math.abs(e.amount), 0);
+  const brokerOutflows  = ledger.filter(e => e.category === "broker_transfer" && e.amount < 0).reduce((s, e) => s + Math.abs(e.amount), 0);
+  const brokerInflows   = ledger.filter(e => e.category === "broker_transfer" && e.amount > 0).reduce((s, e) => s + e.amount, 0);
+  const brokerTransfers = brokerOutflows - brokerInflows; // net sent to broker
   const totalBankCosts  = bankCharges + bankTaxes;
 
   // ── True P&L ───────────────────────────────────────────────────
@@ -231,10 +234,12 @@ export default async function ContributionsPage() {
           <div className="bg-card border border-border rounded-xl p-4">
             <div className="flex items-center gap-2 mb-1">
               <Building2 className="w-3.5 h-3.5 text-muted-foreground" />
-              <p className="text-xs text-muted-foreground">Sent to Broker</p>
+              <p className="text-xs text-muted-foreground">Net to Broker</p>
             </div>
             <p className="text-xl font-bold text-foreground">{formatCurrency(brokerTransfers)}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">Transferred for investment</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {formatCurrency(brokerOutflows)} out · {formatCurrency(brokerInflows)} returned
+            </p>
           </div>
         </div>
 

@@ -5,7 +5,7 @@
 --   3. First CHD transfer date corrected to 28/08/2025 (was 2025-08-10)
 --   4. FGN Stamp Duty entries replaced with correct dates/amounts
 --      (₦50 per eligible incoming credit ≥ ₦10,000)
---   5. Adds missing member Amida Oluwatobi Paul (₦200,000 on 26/03/2026)
+--   5. Adds missing ₦200,000 contribution (26/03/2026) for Oluwatobi Amida
 --   6. Resets and re-seeds bank_statement_txns from corrected data
 
 BEGIN;
@@ -195,7 +195,7 @@ VALUES
   ('2026-03-03', 'FGN Stamp Duty', -50.00, 'tax', NULL),
 -- 25/03: Oluwatosin ₦200,000
   ('2026-03-25', 'FGN Stamp Duty', -50.00, 'tax', NULL),
--- 26/03: Gbenga ₦200,000 + Olujimi ₦200,000 + Amida Oluwatobi Paul ₦200,000
+-- 26/03: Gbenga ₦200,000 + Olujimi ₦200,000 + Oluwatobi Amida ₦200,000
   ('2026-03-26', 'FGN Stamp Duty', -150.00, 'tax', NULL),
 -- 27/03: Mike & Mary ₦200,000
   ('2026-03-27', 'FGN Stamp Duty', -50.00, 'tax', NULL),
@@ -216,22 +216,9 @@ VALUES
 
 
 -- ============================================================
--- STEP 5: Add missing member Amida Oluwatobi Paul
--- Identified from March 2026 bank credits
--- ============================================================
-INSERT INTO public.members (full_name, email, join_date, is_active, notes)
-VALUES (
-  'Amida Oluwatobi Paul',
-  'oluwatobi.paul@eigmembers.ng',
-  '2026-03-26',
-  TRUE,
-  'Added Mar 2026 — confirmed first contribution 26/03/2026'
-)
-ON CONFLICT (email) DO NOTHING;
-
-
--- ============================================================
--- STEP 6: Add Amida Oluwatobi Paul contribution
+-- STEP 5: Add missing contribution for Oluwatobi Amida (26/03/2026)
+-- "Amida Oluwatobi Paul" / "Tobi Amida" are the same person as
+-- the existing member Oluwatobi Amida (oluwatobi.amida@eigmembers.ng)
 -- ============================================================
 INSERT INTO public.member_contributions
   (member_id, amount, contribution_date, payment_method, bank_reference, notes)
@@ -243,7 +230,7 @@ SELECT
   NULL,
   'Mar 2026 contribution'
 FROM public.members m
-WHERE m.email = 'oluwatobi.paul@eigmembers.ng'
+WHERE m.email = 'oluwatobi.amida@eigmembers.ng'
   AND NOT EXISTS (
     SELECT 1 FROM public.member_contributions mc
     WHERE mc.member_id = m.id
@@ -253,7 +240,7 @@ WHERE m.email = 'oluwatobi.paul@eigmembers.ng'
 
 
 -- ============================================================
--- STEP 7: Reset and re-seed bank_statement_txns
+-- STEP 6: Reset and re-seed bank_statement_txns
 -- Deletes all rows and rebuilds from corrected source data
 -- ============================================================
 

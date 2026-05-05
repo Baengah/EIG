@@ -5,7 +5,11 @@ export async function POST(request: Request) {
   const authHeader = request.headers.get("authorization");
   const apiKey = process.env.SCRAPER_API_KEY;
 
-  if (apiKey && authHeader !== `Bearer ${apiKey}`) {
+  // Allow valid API key (used by GCP scheduler); otherwise require admin session.
+  // When SCRAPER_API_KEY is not set, the API key path is disabled entirely and
+  // every request must present a valid admin session.
+  const hasValidApiKey = !!apiKey && authHeader === `Bearer ${apiKey}`;
+  if (!hasValidApiKey) {
     const supabase = await createServiceClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

@@ -6,6 +6,11 @@ export async function PATCH(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
+  const profileRes = await supabase.from("profiles").select("role").eq("id", user.id).single();
+  if (profileRes.data?.role !== "admin") {
+    return Response.json({ error: "Admin access required" }, { status: 403 });
+  }
+
   const { id, display_name, description }: { id: string; display_name: string; description: string | null } = await req.json();
   if (!id || !display_name?.trim()) {
     return Response.json({ error: "id and display_name are required" }, { status: 400 });

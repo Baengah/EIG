@@ -10,6 +10,11 @@ export async function POST() {
       return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
     }
 
+    const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
+    if (profile?.role !== "admin") {
+      return NextResponse.json({ error: "Admin access required" }, { status: 403 });
+    }
+
     const today = new Date().toISOString().split("T")[0];
 
     const { data, error } = await supabase.rpc("create_portfolio_snapshot", { p_date: today });

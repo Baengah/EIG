@@ -20,6 +20,11 @@ export async function POST() {
       return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
     }
 
+    const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
+    if (profile?.role !== "admin") {
+      return NextResponse.json({ error: "Admin access required" }, { status: 403 });
+    }
+
     const { data: pending } = await supabase
       .from("documents")
       .select("*")
@@ -63,7 +68,8 @@ export async function POST() {
 
     return NextResponse.json({ processed, total: pending.length });
   } catch (err: unknown) {
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+    console.error("Document process error:", err);
+    return NextResponse.json({ error: "Processing failed" }, { status: 500 });
   }
 }
 

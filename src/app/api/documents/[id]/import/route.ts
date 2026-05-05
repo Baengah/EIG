@@ -30,6 +30,11 @@ export async function POST(
       return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
     }
 
+    const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
+    if (profile?.role !== "admin") {
+      return NextResponse.json({ error: "Admin access required" }, { status: 403 });
+    }
+
     // Fetch document
     const { data: doc, error: docError } = await supabase
       .from("documents")
@@ -145,7 +150,8 @@ export async function POST(
 
     return NextResponse.json({ inserted: inserted.length, transaction_ids: inserted });
   } catch (err: unknown) {
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+    console.error("Document import error:", err);
+    return NextResponse.json({ error: "Import failed" }, { status: 500 });
   }
 }
 

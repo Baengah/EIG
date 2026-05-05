@@ -6,6 +6,11 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
+  const profileRes = await supabase.from("profiles").select("role").eq("id", user.id).single();
+  if (profileRes.data?.role !== "admin") {
+    return Response.json({ error: "Admin access required" }, { status: 403 });
+  }
+
   const body: {
     txn_date: string;
     description: string;

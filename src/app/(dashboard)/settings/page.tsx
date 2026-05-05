@@ -1,11 +1,12 @@
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { Header } from "@/components/layout/Header";
 import { BrokerAccountForm } from "@/components/settings/BrokerAccountForm";
 import { BrokerCashButton } from "@/components/settings/BrokerCashButton";
 import { BankAccountForm } from "@/components/settings/BankAccountForm";
 import { TriggerScrapeButton } from "@/components/settings/TriggerScrapeButton";
 import { InviteUserButton } from "@/components/settings/InviteUserButton";
-import { Building2, Landmark, RefreshCw, Users } from "lucide-react";
+import { EditCategoryButton } from "@/components/settings/EditCategoryButton";
+import { Building2, Landmark, RefreshCw, Users, TrendingUp, TrendingDown, ArrowLeftRight } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 
 export const revalidate = 60;
@@ -15,15 +16,23 @@ export default async function SettingsPage() {
 
   const { data: { user } } = await supabase.auth.getUser();
 
-  const [brokersRes, banksRes, profileRes] = await Promise.all([
+  const svc = await createServiceClient();
+
+  const [brokersRes, banksRes, profileRes, categoriesRes] = await Promise.all([
     supabase.from("broker_accounts").select("*").order("broker_name"),
     supabase.from("bank_accounts").select("*").order("bank_name"),
     user ? supabase.from("profiles").select("role").eq("id", user.id).single() : Promise.resolve({ data: null }),
+    svc.from("ledger_categories").select("*").order("type").order("sort_order"),
   ]);
 
-  const brokers = brokersRes.data ?? [];
-  const banks = banksRes.data ?? [];
-  const isAdmin = profileRes.data?.role === "admin";
+  const brokers    = brokersRes.data ?? [];
+  const banks      = banksRes.data ?? [];
+  const isAdmin    = profileRes.data?.role === "admin";
+  const categories = categoriesRes.data ?? [];
+
+  const incomeCategories = categories.filter(c => c.type === "income");
+  const costCategories   = categories.filter(c => c.type === "cost");
+  const xferCategories   = categories.filter(c => c.type === "transfer");
 
   return (
     <div>
@@ -100,6 +109,85 @@ export default async function SettingsPage() {
             </p>
           </div>
         )}
+
+        {/* Line item categories */}
+        <div className="bg-card border border-border rounded-xl p-5">
+          <div className="flex items-center gap-2 mb-1">
+            <TrendingUp className="w-4 h-4 text-primary" />
+            <h3 className="font-semibold text-foreground">Income &amp; Cost Line Items</h3>
+          </div>
+          <p className="text-sm text-muted-foreground mb-4">
+            Categories used when attributing unmatched bank entries. Edit display names and descriptions here.
+          </p>
+
+          {/* Income */}
+          <div className="mb-4">
+            <div className="flex items-center gap-1.5 mb-2">
+              <TrendingUp className="w-3.5 h-3.5 text-gain" />
+              <p className="text-xs font-semibold text-gain uppercase tracking-wide">Income</p>
+            </div>
+            <div className="space-y-1.5">
+              {incomeCategories.map(c => (
+                <div key={c.id} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium text-foreground">{c.display_name}</p>
+                      <span className="text-xs font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{c.code}</span>
+                    </div>
+                    {c.description && <p className="text-xs text-muted-foreground mt-0.5">{c.description}</p>}
+                  </div>
+                  {isAdmin && <EditCategoryButton category={c} />}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Cost */}
+          <div className="mb-4">
+            <div className="flex items-center gap-1.5 mb-2">
+              <TrendingDown className="w-3.5 h-3.5 text-loss" />
+              <p className="text-xs font-semibold text-loss uppercase tracking-wide">Cost / Expense</p>
+            </div>
+            <div className="space-y-1.5">
+              {costCategories.map(c => (
+                <div key={c.id} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium text-foreground">{c.display_name}</p>
+                      <span className="text-xs font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{c.code}</span>
+                    </div>
+                    {c.description && <p className="text-xs text-muted-foreground mt-0.5">{c.description}</p>}
+                  </div>
+                  {isAdmin && <EditCategoryButton category={c} />}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Transfer */}
+          {xferCategories.length > 0 && (
+            <div>
+              <div className="flex items-center gap-1.5 mb-2">
+                <ArrowLeftRight className="w-3.5 h-3.5 text-muted-foreground" />
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Transfer</p>
+              </div>
+              <div className="space-y-1.5">
+                {xferCategories.map(c => (
+                  <div key={c.id} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-medium text-foreground">{c.display_name}</p>
+                        <span className="text-xs font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{c.code}</span>
+                      </div>
+                      {c.description && <p className="text-xs text-muted-foreground mt-0.5">{c.description}</p>}
+                    </div>
+                    {isAdmin && <EditCategoryButton category={c} />}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Manual scrape trigger */}
         <div className="bg-card border border-border rounded-xl p-5">

@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { X, Loader2, Tag } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 
@@ -10,6 +9,13 @@ interface Member {
   id: string;
   full_name: string;
   member_number: string;
+}
+
+interface Category {
+  code: string;
+  type: "income" | "cost" | "transfer";
+  display_name: string;
+  description: string | null;
 }
 
 interface Entry {
@@ -21,33 +27,21 @@ interface Entry {
   notes: string | null;
 }
 
-type ResolvedAs =
-  | "contribution"
-  | "interest_income"
-  | "other_income"
-  | "bank_charge"
-  | "tax"
-  | "broker_transfer"
-  | "ignored";
-
-const RESOLUTION_OPTIONS: { value: ResolvedAs; label: string; isLedger?: boolean; ledgerCategory?: string }[] = [
-  { value: "contribution",     label: "Member Contribution" },
-  { value: "interest_income",  label: "Interest Income",     isLedger: true, ledgerCategory: "interest_income" },
-  { value: "other_income",     label: "Other Income",        isLedger: true, ledgerCategory: "other_income" },
-  { value: "bank_charge",      label: "Bank Charge",         isLedger: true, ledgerCategory: "bank_charge" },
-  { value: "tax",              label: "Tax (WHT / Stamp Duty)", isLedger: true, ledgerCategory: "tax" },
-  { value: "broker_transfer",  label: "Broker Transfer",     isLedger: true, ledgerCategory: "broker_transfer" },
-  { value: "ignored",          label: "Ignore (duplicate / error)" },
-];
-
-export function AttributeEntryButton({ entry, members }: { entry: Entry; members: Member[] }) {
+export function AttributeEntryButton({
+  entry,
+  members,
+  categories,
+}: {
+  entry: Entry;
+  members: Member[];
+  categories: Category[];
+}) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [resolvedAs, setResolvedAs] = useState<ResolvedAs>("contribution");
+  const [resolvedAs, setResolvedAs] = useState("contribution");
   const [memberId, setMemberId] = useState("");
   const [description, setDescription] = useState(entry.description);
   const router = useRouter();
-  const supabase = createClient();
 
   function handleClose() {
     setOpen(false);
@@ -58,49 +52,31 @@ export function AttributeEntryButton({ entry, members }: { entry: Entry; members
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (resolvedAs === "contribution" && !memberId) {
+      toast.error("Select a member");
+      return;
+    }
     setLoading(true);
-
     try {
-      const option = RESOLUTION_OPTIONS.find(o => o.value === resolvedAs)!;
-
-      if (resolvedAs === "contribution") {
-        if (!memberId) { toast.error("Select a member"); setLoading(false); return; }
-        const { error } = await supabase.from("member_contributions").insert({
-          member_id: memberId,
-          amount: Math.abs(entry.amount),
-          contribution_date: entry.entry_date,
-          payment_method: "bank_transfer",
-          bank_reference: entry.bank_reference ?? undefined,
-          notes: description.trim() || undefined,
-        });
-        if (error) throw error;
-
-      } else if (resolvedAs !== "ignored" && option.isLedger) {
-        const { error } = await supabase.from("bank_ledger").insert({
-          entry_date: entry.entry_date,
+      const res = await fetch("/api/bank/attribute", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          entryId: entry.id,
+          resolvedAs,
+          memberId: resolvedAs === "contribution" ? memberId : undefined,
           description: description.trim(),
           amount: entry.amount,
-          category: option.ledgerCategory! as "interest_income" | "bank_charge" | "tax" | "broker_transfer" | "other_income" | "other_expense",
-          bank_reference: entry.bank_reference ?? undefined,
-        });
-        if (error) throw error;
-      }
-
-      // Mark the unmatched entry as resolved
-      const { error: updateErr } = await supabase
-        .from("unmatched_bank_entries")
-        .update({
-          status: resolvedAs === "ignored" ? "ignored" : "resolved",
-          resolved_as: resolvedAs,
-          resolved_at: new Date().toISOString(),
-        })
-        .eq("id", entry.id);
-      if (updateErr) throw updateErr;
-
-      toast.success(resolvedAs === "ignored" ? "Entry ignored" : `Attributed as ${option.label}`);
+          entryDate: entry.entry_date,
+          bankReference: entry.bank_reference,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Attribution failed");
+      toast.success(resolvedAs === "ignored" ? "Entry ignored" : "Entry attributed successfully");
       handleClose();
       router.refresh();
-    } catch (err: unknown) {
+    } catch (err) {
       toast.error(err instanceof Error ? err.message : "Attribution failed");
     } finally {
       setLoading(false);
@@ -108,6 +84,11 @@ export function AttributeEntryButton({ entry, members }: { entry: Entry; members
   }
 
   const isCredit = entry.amount >= 0;
+  const incomeCategories = categories.filter(c => c.type === "income");
+  const costCategories   = categories.filter(c => c.type === "cost");
+  const xferCategories   = categories.filter(c => c.type === "transfer");
+
+  const selectedCategory = categories.find(c => c.code === resolvedAs);
 
   return (
     <>
@@ -120,8 +101,15 @@ export function AttributeEntryButton({ entry, members }: { entry: Entry; members
       </button>
 
       {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={handleClose}>
-          <div className="bg-card border border-border rounded-xl w-full max-w-md shadow-xl" onClick={e => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={handleClose}
+        >
+          <div
+            className="bg-card border border-border rounded-xl w-full max-w-md shadow-xl"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-border">
               <h2 className="font-semibold text-foreground">Attribute Bank Entry</h2>
               <button onClick={handleClose} className="text-muted-foreground hover:text-foreground">
@@ -129,33 +117,61 @@ export function AttributeEntryButton({ entry, members }: { entry: Entry; members
               </button>
             </div>
 
+            {/* Entry summary */}
             <div className="px-6 py-3 bg-muted/30 border-b border-border text-sm">
               <div className="flex justify-between items-start gap-2">
-                <div>
-                  <p className="text-muted-foreground text-xs">{entry.entry_date}</p>
-                  <p className="font-medium text-foreground">{entry.description}</p>
-                  {entry.bank_reference && <p className="text-xs text-muted-foreground mt-0.5">{entry.bank_reference}</p>}
+                <div className="min-w-0">
+                  <p className="text-xs text-muted-foreground">{entry.entry_date}</p>
+                  <p className="font-medium text-foreground truncate">{entry.description}</p>
+                  {entry.notes && (
+                    <p className="text-xs text-muted-foreground mt-0.5">{entry.notes}</p>
+                  )}
                 </div>
                 <p className={`text-lg font-bold shrink-0 ${isCredit ? "text-gain" : "text-loss"}`}>
-                  {isCredit ? "+" : ""}₦{Math.abs(entry.amount).toLocaleString("en-NG")}
+                  {isCredit ? "+" : "−"}₦{Math.abs(entry.amount).toLocaleString("en-NG")}
                 </p>
               </div>
             </div>
 
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
+              {/* Attribute as */}
               <div>
                 <label className="block text-sm font-medium text-foreground mb-1.5">Attribute as</label>
                 <select
                   value={resolvedAs}
-                  onChange={e => setResolvedAs(e.target.value as ResolvedAs)}
+                  onChange={e => setResolvedAs(e.target.value)}
                   className="w-full px-3 py-2.5 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                 >
-                  {RESOLUTION_OPTIONS.map(o => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
+                  <option value="contribution">Member Contribution</option>
+                  {incomeCategories.length > 0 && (
+                    <optgroup label="Income">
+                      {incomeCategories.map(c => (
+                        <option key={c.code} value={c.code}>{c.display_name}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {costCategories.length > 0 && (
+                    <optgroup label="Cost / Expense">
+                      {costCategories.map(c => (
+                        <option key={c.code} value={c.code}>{c.display_name}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {xferCategories.length > 0 && (
+                    <optgroup label="Transfer">
+                      {xferCategories.map(c => (
+                        <option key={c.code} value={c.code}>{c.display_name}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                  <option value="ignored">Ignore (duplicate / error)</option>
                 </select>
+                {selectedCategory?.description && (
+                  <p className="text-xs text-muted-foreground mt-1">{selectedCategory.description}</p>
+                )}
               </div>
 
+              {/* Member selector — only for contributions */}
               {resolvedAs === "contribution" && (
                 <div>
                   <label className="block text-sm font-medium text-foreground mb-1.5">Member</label>
@@ -167,15 +183,18 @@ export function AttributeEntryButton({ entry, members }: { entry: Entry; members
                   >
                     <option value="">Select member…</option>
                     {members.map(m => (
-                      <option key={m.id} value={m.id}>{m.full_name} ({m.member_number})</option>
+                      <option key={m.id} value={m.id}>
+                        {m.full_name} ({m.member_number})
+                      </option>
                     ))}
                   </select>
                 </div>
               )}
 
+              {/* Description */}
               <div>
                 <label className="block text-sm font-medium text-foreground mb-1.5">
-                  Description <span className="text-muted-foreground text-xs">(edit if needed)</span>
+                  Description <span className="text-xs text-muted-foreground">(edit if needed)</span>
                 </label>
                 <input
                   type="text"

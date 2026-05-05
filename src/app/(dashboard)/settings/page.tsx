@@ -6,6 +6,7 @@ import { BankAccountForm } from "@/components/settings/BankAccountForm";
 import { TriggerScrapeButton } from "@/components/settings/TriggerScrapeButton";
 import { InviteUserButton } from "@/components/settings/InviteUserButton";
 import { EditCategoryButton } from "@/components/settings/EditCategoryButton";
+import { AddCategoryButton } from "@/components/settings/AddCategoryButton";
 import { Building2, Landmark, RefreshCw, Users, TrendingUp, TrendingDown, ArrowLeftRight } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 
@@ -112,9 +113,12 @@ export default async function SettingsPage() {
 
         {/* Line item categories */}
         <div className="bg-card border border-border rounded-xl p-5">
-          <div className="flex items-center gap-2 mb-1">
-            <TrendingUp className="w-4 h-4 text-primary" />
-            <h3 className="font-semibold text-foreground">Income &amp; Cost Line Items</h3>
+          <div className="flex items-center justify-between mb-1">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-primary" />
+              <h3 className="font-semibold text-foreground">Income &amp; Cost Line Items</h3>
+            </div>
+            {isAdmin && <AddCategoryButton />}
           </div>
           <p className="text-sm text-muted-foreground mb-4">
             Categories used when attributing unmatched bank entries. Edit display names and descriptions here.

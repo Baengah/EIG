@@ -574,6 +574,49 @@ export type Database = {
         };
         Relationships: [];
       };
+      bank_statement_txns: {
+        Row: {
+          id: string;
+          txn_date: string;
+          description: string;
+          debit: number | null;
+          credit: number | null;
+          bank_reference: string | null;
+          bank_account_id: string | null;
+          status: "matched" | "unmatched" | "ignored";
+          matched_type: "contribution" | "bank_ledger" | "transaction" | null;
+          matched_id: string | null;
+          notes: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          txn_date: string;
+          description: string;
+          debit?: number | null;
+          credit?: number | null;
+          bank_reference?: string | null;
+          bank_account_id?: string | null;
+          status?: "matched" | "unmatched" | "ignored";
+          matched_type?: "contribution" | "bank_ledger" | "transaction" | null;
+          matched_id?: string | null;
+          notes?: string | null;
+        };
+        Update: {
+          id?: string;
+          txn_date?: string;
+          description?: string;
+          debit?: number | null;
+          credit?: number | null;
+          bank_reference?: string | null;
+          bank_account_id?: string | null;
+          status?: "matched" | "unmatched" | "ignored";
+          matched_type?: "contribution" | "bank_ledger" | "transaction" | null;
+          matched_id?: string | null;
+          notes?: string | null;
+        };
+        Relationships: [];
+      };
       ledger_categories: {
         Row: {
           id: string;
@@ -788,6 +831,7 @@ export type BrokerAccount = Database["public"]["Tables"]["broker_accounts"]["Row
 export type BankLedgerEntry = Database["public"]["Tables"]["bank_ledger"]["Row"];
 export type UnmatchedBankEntry = Database["public"]["Tables"]["unmatched_bank_entries"]["Row"];
 export type LedgerCategory = Database["public"]["Tables"]["ledger_categories"]["Row"];
+export type BankStatementTxn = Database["public"]["Tables"]["bank_statement_txns"]["Row"];
 export type HoldingWithValue = Database["public"]["Views"]["v_holdings_with_value"]["Row"];
 export type PortfolioSummary = Database["public"]["Views"]["v_portfolio_summary"]["Row"];
 export type ContributionStatus = Database["public"]["Views"]["v_contribution_status"]["Row"];

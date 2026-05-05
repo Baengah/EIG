@@ -38,7 +38,7 @@ export default async function SettingsPage() {
   return (
     <div>
       <Header title="Settings" subtitle="Group accounts, brokers, and system settings" />
-      <div className="p-6 space-y-6">
+      <div className="p-4 sm:p-6 space-y-6">
 
         {/* Broker accounts */}
         <div className="bg-card border border-border rounded-xl p-5">
@@ -47,12 +47,12 @@ export default async function SettingsPage() {
             <h3 className="font-semibold text-foreground">Broker Accounts</h3>
           </div>
           {brokers.map((b) => (
-            <div key={b.id} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg mb-2 text-sm">
-              <div>
+            <div key={b.id} className="flex items-start justify-between p-3 bg-muted/30 rounded-lg mb-2 text-sm gap-3">
+              <div className="min-w-0">
                 <p className="font-medium text-foreground">{b.broker_name}</p>
-                <p className="text-xs text-muted-foreground">{b.account_name} · {b.account_number}</p>
+                <p className="text-xs text-muted-foreground truncate">{b.account_name} · {b.account_number}</p>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
                 <div className="text-right">
                   <p className="text-xs text-muted-foreground">Cash at broker</p>
                   <p className="font-semibold text-foreground">{formatCurrency(b.cash_balance ?? 0)}</p>

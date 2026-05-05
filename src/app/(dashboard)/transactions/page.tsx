@@ -73,7 +73,7 @@ export default async function TransactionsPage() {
   return (
     <div>
       <Header title="Transactions" subtitle="Cash flows, investments, fees, and P&L" />
-      <div className="p-6 space-y-6">
+      <div className="p-4 sm:p-6 space-y-6">
 
         {/* ── P&L Banner ─────────────────────────────────────── */}
         <div className={`rounded-xl border p-5 ${plPositive ? "bg-gain/5 border-gain/20" : "bg-loss/5 border-loss/20"}`}>
@@ -89,7 +89,7 @@ export default async function TransactionsPage() {
                   {plPositive ? "+" : ""}{netPLPct.toFixed(2)}%
                 </span>
               </div>
-              <p className="text-xs text-muted-foreground mt-1">
+              <p className="hidden sm:block text-xs text-muted-foreground mt-1">
                 (Portfolio {formatCurrency(portfolioValue)} + Cash {formatCurrency(totalBrokerCash)} + Dividends {formatCurrency(totalDividends)}) − Capital Raised {formatCurrency(totalRaised)}
               </p>
             </div>
@@ -216,14 +216,14 @@ export default async function TransactionsPage() {
               <table className="w-full text-sm">
                 <thead className="bg-muted/30">
                   <tr>
-                    <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground">Date</th>
-                    <th className="text-center px-4 py-3 text-xs font-medium text-muted-foreground">Type</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Asset</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Broker</th>
-                    <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground">Qty</th>
-                    <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground">Price</th>
-                    <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground">Fees</th>
-                    <th className="text-right px-5 py-3 text-xs font-medium text-muted-foreground">Net Amount</th>
+                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Date</th>
+                    <th className="text-center px-3 py-3 text-xs font-medium text-muted-foreground">Type</th>
+                    <th className="text-left px-3 py-3 text-xs font-medium text-muted-foreground">Asset</th>
+                    <th className="hidden lg:table-cell text-left px-3 py-3 text-xs font-medium text-muted-foreground">Broker</th>
+                    <th className="hidden sm:table-cell text-right px-3 py-3 text-xs font-medium text-muted-foreground">Qty</th>
+                    <th className="hidden md:table-cell text-right px-3 py-3 text-xs font-medium text-muted-foreground">Price</th>
+                    <th className="hidden md:table-cell text-right px-3 py-3 text-xs font-medium text-muted-foreground">Fees</th>
+                    <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground">Amount</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -235,33 +235,33 @@ export default async function TransactionsPage() {
                     const assetSub = (txn.stocks as { company_name?: string } | null)?.company_name ?? "";
                     return (
                       <tr key={txn.id} className="hover:bg-muted/20 transition-colors">
-                        <td className="px-5 py-3 text-muted-foreground whitespace-nowrap">
+                        <td className="px-4 py-3 text-muted-foreground whitespace-nowrap text-xs">
                           {new Date(txn.transaction_date).toLocaleDateString("en-NG", {
                             day: "2-digit", month: "short", year: "numeric",
                           })}
                         </td>
-                        <td className="px-4 py-3 text-center">
+                        <td className="px-3 py-3 text-center">
                           <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${colorClass}`}>
                             {txn.transaction_type.replace(/_/g, " ")}
                           </span>
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-3 py-3">
                           <p className="font-medium text-foreground">{asset}</p>
-                          {assetSub && <p className="text-xs text-muted-foreground">{assetSub}</p>}
+                          {assetSub && <p className="text-xs text-muted-foreground truncate max-w-[120px]">{assetSub}</p>}
                         </td>
-                        <td className="px-4 py-3 text-muted-foreground">
+                        <td className="hidden lg:table-cell px-3 py-3 text-muted-foreground text-xs">
                           {(txn.broker_accounts as { broker_name?: string } | null)?.broker_name ?? "—"}
                         </td>
-                        <td className="px-4 py-3 text-right text-foreground">
+                        <td className="hidden sm:table-cell px-3 py-3 text-right text-foreground text-xs">
                           {txn.quantity?.toLocaleString("en-NG") ?? "—"}
                         </td>
-                        <td className="px-4 py-3 text-right text-foreground">
+                        <td className="hidden md:table-cell px-3 py-3 text-right text-foreground text-xs">
                           {txn.price ? formatCurrency(txn.price) : "—"}
                         </td>
-                        <td className="px-4 py-3 text-right text-muted-foreground">
+                        <td className="hidden md:table-cell px-3 py-3 text-right text-muted-foreground text-xs">
                           {txn.total_fees ? formatCurrency(txn.total_fees) : "—"}
                         </td>
-                        <td className="px-5 py-3 text-right font-medium text-foreground">
+                        <td className="px-4 py-3 text-right font-medium text-foreground text-sm">
                           {formatCurrency(txn.net_amount)}
                         </td>
                       </tr>

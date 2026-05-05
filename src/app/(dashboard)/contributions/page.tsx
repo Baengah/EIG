@@ -157,7 +157,7 @@ export default async function ContributionsPage() {
   return (
     <div>
       <Header title="Contributions & P&L" subtitle="Capital raised, bank costs, dividends, and collective returns" />
-      <div className="p-6 space-y-6">
+      <div className="p-4 sm:p-6 space-y-6">
 
         {/* ── True P&L Banner ─────────────────────────────────── */}
         <div className={`rounded-xl border p-5 ${plPositive ? "bg-gain/5 border-gain/20" : "bg-loss/5 border-loss/20"}`}>
@@ -173,7 +173,7 @@ export default async function ContributionsPage() {
                   {plPositive ? "+" : ""}{netPLPct.toFixed(2)}%
                 </span>
               </div>
-              <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
+              <p className="hidden sm:block text-xs text-muted-foreground mt-1.5 leading-relaxed">
                 Current value (Portfolio {formatCurrency(portfolioValue)} + Broker cash {formatCurrency(totalBrokerCash)} + Dividends {formatCurrency(totalDividendsPaid)})
                 {bankIncome > 0 && ` + Bank interest ${formatCurrency(bankIncome)}`}
                 {` − Capital ${formatCurrency(totalContributions)}`}
@@ -251,7 +251,7 @@ export default async function ContributionsPage() {
 
         {/* ── Contributor P&L table ───────────────────────────── */}
         <div className="bg-card border border-border rounded-xl overflow-hidden">
-          <div className="px-5 py-4 border-b border-border">
+          <div className="px-4 sm:px-5 py-4 border-b border-border">
             <h3 className="font-semibold text-foreground">Contributor P&L</h3>
             <p className="text-xs text-muted-foreground mt-0.5">
               Ownership share proportional to contributions · Unrealized portfolio gains attributed pro-rata
@@ -267,30 +267,30 @@ export default async function ContributionsPage() {
               <table className="w-full text-sm">
                 <thead className="bg-muted/30">
                   <tr>
-                    <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground">Member</th>
-                    <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground">Contributed</th>
-                    <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground">Share %</th>
-                    <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground">Portfolio Value</th>
-                    <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground">Unrealized Gain</th>
-                    <th className="text-right px-5 py-3 text-xs font-medium text-muted-foreground">Return %</th>
+                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Member</th>
+                    <th className="text-right px-3 py-3 text-xs font-medium text-muted-foreground">Contributed</th>
+                    <th className="hidden sm:table-cell text-right px-3 py-3 text-xs font-medium text-muted-foreground">Share %</th>
+                    <th className="hidden md:table-cell text-right px-3 py-3 text-xs font-medium text-muted-foreground">Portfolio</th>
+                    <th className="hidden sm:table-cell text-right px-3 py-3 text-xs font-medium text-muted-foreground">Gain</th>
+                    <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground">Return</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
                   {plRows.map(({ memberId, member, contributed, sharePct, attrPortfolio, attrGain, gainPct }) => (
                     <tr key={memberId} className="hover:bg-muted/20 transition-colors">
-                      <td className="px-5 py-3">
+                      <td className="px-4 py-3">
                         <p className="font-medium text-foreground">{member?.full_name ?? "Unknown"}</p>
                         <p className="text-xs text-muted-foreground">{member?.member_number ?? ""}</p>
                       </td>
-                      <td className="px-4 py-3 text-right font-medium text-foreground">{formatCurrency(contributed)}</td>
-                      <td className="px-4 py-3 text-right text-foreground">{(sharePct * 100).toFixed(2)}%</td>
-                      <td className="px-4 py-3 text-right font-medium text-foreground">{formatCurrency(attrPortfolio)}</td>
-                      <td className="px-4 py-3 text-right">
+                      <td className="px-3 py-3 text-right font-medium text-foreground">{formatCurrency(contributed)}</td>
+                      <td className="hidden sm:table-cell px-3 py-3 text-right text-foreground">{(sharePct * 100).toFixed(2)}%</td>
+                      <td className="hidden md:table-cell px-3 py-3 text-right font-medium text-foreground">{formatCurrency(attrPortfolio)}</td>
+                      <td className="hidden sm:table-cell px-3 py-3 text-right">
                         <span className={`font-medium ${attrGain >= 0 ? "text-gain" : "text-loss"}`}>
                           {attrGain >= 0 ? "+" : ""}{formatCurrency(attrGain)}
                         </span>
                       </td>
-                      <td className="px-5 py-3 text-right">
+                      <td className="px-4 py-3 text-right">
                         <span className={`font-medium ${gainPct >= 0 ? "text-gain" : "text-loss"}`}>
                           {formatPercent(gainPct)}
                         </span>
@@ -301,16 +301,16 @@ export default async function ContributionsPage() {
                 {plRows.length > 1 && (
                   <tfoot className="bg-muted/20 border-t border-border">
                     <tr>
-                      <td className="px-5 py-3 text-xs font-semibold text-muted-foreground">Total</td>
-                      <td className="px-4 py-3 text-right font-bold text-foreground">{formatCurrency(totalContributions)}</td>
-                      <td className="px-4 py-3 text-right font-bold text-foreground">100%</td>
-                      <td className="px-4 py-3 text-right font-bold text-foreground">{formatCurrency(portfolioValue)}</td>
-                      <td className="px-4 py-3 text-right">
+                      <td className="px-4 py-3 text-xs font-semibold text-muted-foreground">Total</td>
+                      <td className="px-3 py-3 text-right font-bold text-foreground">{formatCurrency(totalContributions)}</td>
+                      <td className="hidden sm:table-cell px-3 py-3 text-right font-bold text-foreground">100%</td>
+                      <td className="hidden md:table-cell px-3 py-3 text-right font-bold text-foreground">{formatCurrency(portfolioValue)}</td>
+                      <td className="hidden sm:table-cell px-3 py-3 text-right">
                         <span className={`font-bold ${(summary?.total_unrealized_gain_loss ?? 0) >= 0 ? "text-gain" : "text-loss"}`}>
                           {(summary?.total_unrealized_gain_loss ?? 0) >= 0 ? "+" : ""}{formatCurrency(summary?.total_unrealized_gain_loss ?? 0)}
                         </span>
                       </td>
-                      <td className="px-5 py-3 text-right">
+                      <td className="px-4 py-3 text-right">
                         <span className={`font-bold ${(summary?.overall_gain_loss_percent ?? 0) >= 0 ? "text-gain" : "text-loss"}`}>
                           {formatPercent(summary?.overall_gain_loss_percent ?? 0)}
                         </span>
@@ -325,30 +325,32 @@ export default async function ContributionsPage() {
 
         {/* ── Account Statement ────────────────────────────────── */}
         <div className="bg-card border border-border rounded-xl overflow-hidden">
-          <div className="px-5 py-4 border-b border-border flex items-start justify-between gap-4 flex-wrap">
-            <div>
-              <div className="flex items-center gap-2">
-                <Landmark className="w-4 h-4 text-primary" />
-                <h3 className="font-semibold text-foreground">Account Statement</h3>
-              </div>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {statement.length} entries — contributions, dividends, interest, charges, taxes, transfers
-              </p>
-            </div>
-            <div className="flex items-center gap-6 text-right text-sm">
+          <div className="px-4 sm:px-5 py-4 border-b border-border">
+            <div className="flex items-start justify-between gap-3 flex-wrap">
               <div>
-                <p className="text-xs text-muted-foreground">Total Credits</p>
-                <p className="font-semibold text-gain">{formatCurrency(totalCredits)}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Total Debits</p>
-                <p className="font-semibold text-loss">{formatCurrency(totalDebits)}</p>
-              </div>
-              <div className="pl-4 border-l border-border">
-                <p className="text-xs text-muted-foreground">Cash at Bank</p>
-                <p className={`text-lg font-bold ${cashAtBank >= 0 ? "text-foreground" : "text-loss"}`}>
-                  {formatCurrency(cashAtBank)}
+                <div className="flex items-center gap-2">
+                  <Landmark className="w-4 h-4 text-primary" />
+                  <h3 className="font-semibold text-foreground">Account Statement</h3>
+                </div>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {statement.length} entries
                 </p>
+              </div>
+              <div className="flex items-center gap-3 sm:gap-6 text-right text-sm">
+                <div>
+                  <p className="text-xs text-muted-foreground">Credits</p>
+                  <p className="font-semibold text-gain text-sm">{formatCurrency(totalCredits)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Debits</p>
+                  <p className="font-semibold text-loss text-sm">{formatCurrency(totalDebits)}</p>
+                </div>
+                <div className="pl-3 sm:pl-4 border-l border-border">
+                  <p className="text-xs text-muted-foreground">Balance</p>
+                  <p className={`font-bold ${cashAtBank >= 0 ? "text-foreground" : "text-loss"}`}>
+                    {formatCurrency(cashAtBank)}
+                  </p>
+                </div>
               </div>
             </div>
           </div>
@@ -366,12 +368,12 @@ export default async function ContributionsPage() {
               <table className="w-full text-sm">
                 <thead className="bg-muted/30">
                   <tr>
-                    <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground whitespace-nowrap">Date</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Description</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Type</th>
-                    <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground">Debit (₦)</th>
-                    <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground">Credit (₦)</th>
-                    <th className="text-right px-5 py-3 text-xs font-medium text-muted-foreground">Balance (₦)</th>
+                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground whitespace-nowrap">Date</th>
+                    <th className="text-left px-3 py-3 text-xs font-medium text-muted-foreground">Description</th>
+                    <th className="hidden sm:table-cell text-left px-3 py-3 text-xs font-medium text-muted-foreground">Type</th>
+                    <th className="hidden sm:table-cell text-right px-3 py-3 text-xs font-medium text-muted-foreground">Debit</th>
+                    <th className="hidden sm:table-cell text-right px-3 py-3 text-xs font-medium text-muted-foreground">Credit</th>
+                    <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground">Balance</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -379,25 +381,29 @@ export default async function ContributionsPage() {
                     const meta = CATEGORY_META[entry.category] ?? { label: entry.category, color: "text-muted-foreground" };
                     return (
                       <tr key={entry.id} className={`hover:bg-muted/20 transition-colors ${i === 0 ? "bg-muted/10" : ""}`}>
-                        <td className="px-5 py-3 text-muted-foreground whitespace-nowrap text-xs">
-                          {new Date(entry.date).toLocaleDateString("en-NG", { day: "2-digit", month: "short", year: "numeric" })}
+                        <td className="px-4 py-3 text-muted-foreground whitespace-nowrap text-xs">
+                          {new Date(entry.date).toLocaleDateString("en-NG", { day: "2-digit", month: "short", year: "2-digit" })}
                         </td>
-                        <td className="px-4 py-3">
-                          <p className="text-foreground leading-tight">{entry.description}</p>
+                        <td className="px-3 py-3 max-w-0">
+                          <p className="text-foreground leading-tight text-xs truncate">{entry.description}</p>
                           {entry.reference && (
-                            <p className="text-xs text-muted-foreground mt-0.5">{entry.reference}</p>
+                            <p className="text-xs text-muted-foreground mt-0.5 truncate">{entry.reference}</p>
                           )}
+                          {/* Amount visible only on mobile (replaces debit/credit columns) */}
+                          <p className={`text-xs font-medium mt-0.5 sm:hidden ${entry.credit > 0 ? "text-gain" : "text-loss"}`}>
+                            {entry.credit > 0 ? `+${formatCurrency(entry.credit)}` : entry.debit > 0 ? `−${formatCurrency(entry.debit)}` : ""}
+                          </p>
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="hidden sm:table-cell px-3 py-3">
                           <span className={`text-xs font-medium ${meta.color}`}>{meta.label}</span>
                         </td>
-                        <td className="px-4 py-3 text-right font-mono text-xs text-loss">
+                        <td className="hidden sm:table-cell px-3 py-3 text-right font-mono text-xs text-loss">
                           {entry.debit > 0 ? formatCurrency(entry.debit) : ""}
                         </td>
-                        <td className="px-4 py-3 text-right font-mono text-xs text-gain">
+                        <td className="hidden sm:table-cell px-3 py-3 text-right font-mono text-xs text-gain">
                           {entry.credit > 0 ? formatCurrency(entry.credit) : ""}
                         </td>
-                        <td className={`px-5 py-3 text-right font-mono text-xs tabular-nums font-medium ${
+                        <td className={`px-4 py-3 text-right font-mono text-xs tabular-nums font-medium ${
                           entry.balance >= 0 ? "text-foreground" : "text-loss"
                         } ${i === 0 ? "font-bold" : ""}`}>
                           {formatCurrency(entry.balance)}
@@ -408,12 +414,13 @@ export default async function ContributionsPage() {
                 </tbody>
                 <tfoot className="border-t-2 border-border bg-muted/30">
                   <tr>
-                    <td colSpan={3} className="px-5 py-3 text-xs font-semibold text-muted-foreground">
-                      Totals ({rawEntries.length} entries)
+                    <td colSpan={2} className="px-4 py-3 text-xs font-semibold text-muted-foreground">
+                      Totals ({rawEntries.length})
                     </td>
-                    <td className="px-4 py-3 text-right font-bold text-loss text-xs">{formatCurrency(totalDebits)}</td>
-                    <td className="px-4 py-3 text-right font-bold text-gain text-xs">{formatCurrency(totalCredits)}</td>
-                    <td className="px-5 py-3 text-right font-bold text-foreground text-xs">{formatCurrency(cashAtBank)}</td>
+                    <td className="hidden sm:table-cell px-3 py-3" />
+                    <td className="hidden sm:table-cell px-3 py-3 text-right font-bold text-loss text-xs">{formatCurrency(totalDebits)}</td>
+                    <td className="hidden sm:table-cell px-3 py-3 text-right font-bold text-gain text-xs">{formatCurrency(totalCredits)}</td>
+                    <td className="px-4 py-3 text-right font-bold text-foreground text-xs">{formatCurrency(cashAtBank)}</td>
                   </tr>
                 </tfoot>
               </table>

@@ -157,7 +157,7 @@ export default async function DashboardPage() {
         subtitle={`Portfolio overview — ${new Date().toLocaleDateString("en-NG", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}`}
       />
 
-      <div className="p-6 space-y-6">
+      <div className="p-4 sm:p-6 space-y-6">
         {/* Stats grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
           {stats.map((stat) => (
@@ -275,7 +275,7 @@ export default async function DashboardPage() {
                     <th className="text-left py-2 pr-4 text-xs font-medium text-muted-foreground">Date</th>
                     <th className="text-left py-2 pr-4 text-xs font-medium text-muted-foreground">Asset</th>
                     <th className="text-left py-2 pr-4 text-xs font-medium text-muted-foreground">Type</th>
-                    <th className="text-right py-2 pr-4 text-xs font-medium text-muted-foreground">Qty</th>
+                    <th className="hidden sm:table-cell text-right py-2 pr-4 text-xs font-medium text-muted-foreground">Qty</th>
                     <th className="text-right py-2 text-xs font-medium text-muted-foreground">Amount</th>
                   </tr>
                 </thead>
@@ -297,7 +297,7 @@ export default async function DashboardPage() {
                           {txn.transaction_type}
                         </span>
                       </td>
-                      <td className="py-2.5 pr-4 text-right text-foreground">{txn.quantity?.toLocaleString() ?? "—"}</td>
+                      <td className="hidden sm:table-cell py-2.5 pr-4 text-right text-foreground">{txn.quantity?.toLocaleString() ?? "—"}</td>
                       <td className="py-2.5 text-right font-medium text-foreground">
                         {formatCurrency(txn.net_amount)}
                       </td>

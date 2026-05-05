@@ -142,7 +142,7 @@ export default async function MembersPage() {
   return (
     <div>
       <Header title="Members" subtitle="EIG group member directory" />
-      <div className="p-6 space-y-6">
+      <div className="p-4 sm:p-6 space-y-6">
 
         {/* Stats */}
         <div className="grid grid-cols-3 gap-4">

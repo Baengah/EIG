@@ -79,7 +79,7 @@ export default async function PortfolioPage() {
   return (
     <div>
       <Header title="Portfolio" subtitle="Holdings, valuation, and return analysis" />
-      <div className="p-6 space-y-6">
+      <div className="p-4 sm:p-6 space-y-6">
 
         {/* Summary banner */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -129,26 +129,26 @@ export default async function PortfolioPage() {
               <table className="w-full text-sm">
                 <thead className="bg-muted/30">
                   <tr>
-                    <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground">Member</th>
-                    <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground">Total Contributed</th>
-                    <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground">Share %</th>
-                    <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground">Share of Cost</th>
-                    <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground">Share of Value</th>
-                    <th className="text-right px-5 py-3 text-xs font-medium text-muted-foreground">Share of Gains</th>
+                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Member</th>
+                    <th className="text-right px-3 py-3 text-xs font-medium text-muted-foreground">Contributed</th>
+                    <th className="hidden sm:table-cell text-right px-3 py-3 text-xs font-medium text-muted-foreground">Share %</th>
+                    <th className="hidden md:table-cell text-right px-3 py-3 text-xs font-medium text-muted-foreground">Cost</th>
+                    <th className="hidden sm:table-cell text-right px-3 py-3 text-xs font-medium text-muted-foreground">Value</th>
+                    <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground">Gains</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
                   {contributorRows.map(({ memberId, member, contributed, sharePct, attrCost, attrValue, attrGain }) => (
                     <tr key={memberId} className="hover:bg-muted/20 transition-colors">
-                      <td className="px-5 py-3">
+                      <td className="px-4 py-3">
                         <p className="font-medium text-foreground">{member?.full_name ?? "Unknown"}</p>
                         <p className="text-xs text-muted-foreground">{member?.member_number ?? ""}</p>
                       </td>
-                      <td className="px-4 py-3 text-right text-foreground">{formatCurrency(contributed)}</td>
-                      <td className="px-4 py-3 text-right text-foreground">{(sharePct * 100).toFixed(2)}%</td>
-                      <td className="px-4 py-3 text-right text-foreground">{formatCurrency(attrCost)}</td>
-                      <td className="px-4 py-3 text-right font-medium text-foreground">{formatCurrency(attrValue)}</td>
-                      <td className="px-5 py-3 text-right">
+                      <td className="px-3 py-3 text-right text-foreground">{formatCurrency(contributed)}</td>
+                      <td className="hidden sm:table-cell px-3 py-3 text-right text-foreground">{(sharePct * 100).toFixed(2)}%</td>
+                      <td className="hidden md:table-cell px-3 py-3 text-right text-foreground">{formatCurrency(attrCost)}</td>
+                      <td className="hidden sm:table-cell px-3 py-3 text-right font-medium text-foreground">{formatCurrency(attrValue)}</td>
+                      <td className="px-4 py-3 text-right">
                         <span className={`font-medium ${attrGain >= 0 ? "text-gain" : "text-loss"}`}>
                           {attrGain >= 0 ? "+" : ""}{formatCurrency(attrGain)}
                         </span>
@@ -159,12 +159,12 @@ export default async function PortfolioPage() {
                 {contributorRows.length > 1 && (
                   <tfoot className="bg-muted/20 border-t border-border">
                     <tr>
-                      <td className="px-5 py-3 text-xs font-semibold text-muted-foreground">Total</td>
-                      <td className="px-4 py-3 text-right font-bold text-foreground">{formatCurrency(totalContributed)}</td>
-                      <td className="px-4 py-3 text-right font-bold text-foreground">100%</td>
-                      <td className="px-4 py-3 text-right font-bold text-foreground">{formatCurrency(totalCost)}</td>
-                      <td className="px-4 py-3 text-right font-bold text-foreground">{formatCurrency(totalValue)}</td>
-                      <td className="px-5 py-3 text-right">
+                      <td className="px-4 py-3 text-xs font-semibold text-muted-foreground">Total</td>
+                      <td className="px-3 py-3 text-right font-bold text-foreground">{formatCurrency(totalContributed)}</td>
+                      <td className="hidden sm:table-cell px-3 py-3 text-right font-bold text-foreground">100%</td>
+                      <td className="hidden md:table-cell px-3 py-3 text-right font-bold text-foreground">{formatCurrency(totalCost)}</td>
+                      <td className="hidden sm:table-cell px-3 py-3 text-right font-bold text-foreground">{formatCurrency(totalValue)}</td>
+                      <td className="px-4 py-3 text-right">
                         <span className={`font-bold ${gainLoss >= 0 ? "text-gain" : "text-loss"}`}>
                           {gainLoss >= 0 ? "+" : ""}{formatCurrency(gainLoss)}
                         </span>
@@ -232,13 +232,13 @@ function HoldingsTable({ holdings, totalValue }: { holdings: { id: string; ticke
       <table className="w-full text-sm">
         <thead className="bg-muted/30">
           <tr>
-            <th className="text-left px-5 py-2.5 text-xs font-medium text-muted-foreground">Asset</th>
-            <th className="text-right px-4 py-2.5 text-xs font-medium text-muted-foreground">Units</th>
-            <th className="text-right px-4 py-2.5 text-xs font-medium text-muted-foreground">Avg Cost</th>
-            <th className="text-right px-4 py-2.5 text-xs font-medium text-muted-foreground">Current Price</th>
-            <th className="text-right px-4 py-2.5 text-xs font-medium text-muted-foreground">Value</th>
-            <th className="text-right px-4 py-2.5 text-xs font-medium text-muted-foreground">Gain/Loss</th>
-            <th className="text-right px-5 py-2.5 text-xs font-medium text-muted-foreground">Weight</th>
+            <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Asset</th>
+            <th className="text-right px-3 py-2.5 text-xs font-medium text-muted-foreground">Units</th>
+            <th className="hidden sm:table-cell text-right px-3 py-2.5 text-xs font-medium text-muted-foreground">Avg Cost</th>
+            <th className="hidden sm:table-cell text-right px-3 py-2.5 text-xs font-medium text-muted-foreground">Price</th>
+            <th className="text-right px-3 py-2.5 text-xs font-medium text-muted-foreground">Value</th>
+            <th className="text-right px-3 py-2.5 text-xs font-medium text-muted-foreground">Gain/Loss</th>
+            <th className="hidden md:table-cell text-right px-4 py-2.5 text-xs font-medium text-muted-foreground">Weight</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
@@ -247,32 +247,32 @@ function HoldingsTable({ holdings, totalValue }: { holdings: { id: string; ticke
             const weight = totalValue > 0 ? ((h.current_value ?? 0) / totalValue) * 100 : 0;
             return (
               <tr key={h.id} className="hover:bg-muted/20 transition-colors">
-                <td className="px-5 py-3">
+                <td className="px-4 py-3">
                   <p className="font-medium text-foreground">{h.ticker ?? h.fund_name}</p>
-                  <p className="text-xs text-muted-foreground">{h.company_name ?? h.fund_type ?? h.sector ?? ""}</p>
+                  <p className="text-xs text-muted-foreground truncate max-w-[100px] sm:max-w-none">{h.company_name ?? h.fund_type ?? h.sector ?? ""}</p>
                 </td>
-                <td className="px-4 py-3 text-right text-foreground">{formatNumber(h.quantity, 0)}</td>
-                <td className="px-4 py-3 text-right text-foreground">{formatCurrency(h.average_cost)}</td>
-                <td className="px-4 py-3 text-right">
-                  <div className="text-foreground">{formatCurrency(h.current_price)}</div>
+                <td className="px-3 py-3 text-right text-foreground text-sm">{formatNumber(h.quantity, 0)}</td>
+                <td className="hidden sm:table-cell px-3 py-3 text-right text-foreground text-sm">{formatCurrency(h.average_cost)}</td>
+                <td className="hidden sm:table-cell px-3 py-3 text-right">
+                  <div className="text-foreground text-sm">{formatCurrency(h.current_price)}</div>
                   {h.price_date && (
                     <div className="text-xs text-muted-foreground">
                       {new Date(h.price_date).toLocaleDateString("en-NG", { day: "2-digit", month: "short" })}
                     </div>
                   )}
                 </td>
-                <td className="px-4 py-3 text-right font-medium text-foreground">
+                <td className="px-3 py-3 text-right font-medium text-foreground text-sm">
                   {formatCurrency(h.current_value)}
                 </td>
-                <td className="px-4 py-3 text-right">
-                  <p className={`font-medium ${positive ? "text-gain" : "text-loss"}`}>
+                <td className="px-3 py-3 text-right">
+                  <p className={`font-medium text-sm ${positive ? "text-gain" : "text-loss"}`}>
                     {positive ? "+" : ""}{formatCurrency(h.unrealized_gain_loss)}
                   </p>
                   <p className={`text-xs ${positive ? "text-gain" : "text-loss"}`}>
                     {formatPercent(h.gain_loss_percent)}
                   </p>
                 </td>
-                <td className="px-5 py-3 text-right text-muted-foreground">{weight.toFixed(1)}%</td>
+                <td className="hidden md:table-cell px-4 py-3 text-right text-muted-foreground text-sm">{weight.toFixed(1)}%</td>
               </tr>
             );
           })}

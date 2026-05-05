@@ -6,46 +6,33 @@
 -- Oluwatobi Amida (oluwatobi.amida@eigmembers.ng).
 --
 -- This migration:
---   1. Moves all contributions from the duplicate to the correct member
+--   1. Moves ALL contributions from the duplicate to the correct member (no exclusions)
 --   2. Handles period-payment tracking records (contributions table)
 --   3. Ensures the Mar 2026 ₦200,000 contribution exists for the correct member
---   4. Removes duplicate bank_statement_txns entries for the same contribution
---   5. Fixes bank_statement_txns descriptions that reference the old name
+--   4. Fixes bank_statement_txns descriptions that reference the old name
+--   5. Adds bank_statement_txn entries for any contributions lacking one
 --   6. Deletes the duplicate member row
 
 BEGIN;
 
 -- ============================================================
--- STEP 1: Re-point member_contributions to the correct member.
--- Skip any that would create an exact duplicate (same date + amount).
+-- STEP 1: Re-point ALL member_contributions to the correct member.
+-- No exclusions — every payment attributed to the duplicate is a
+-- real payment by Oluwatobi Amida and must be preserved.
 -- ============================================================
-UPDATE public.member_contributions mc
+UPDATE public.member_contributions
 SET member_id = (
   SELECT id FROM public.members WHERE email = 'oluwatobi.amida@eigmembers.ng'
 )
-WHERE mc.member_id = (
-  SELECT id FROM public.members WHERE email = 'oluwatobi.paul@eigmembers.ng'
-)
-  AND NOT EXISTS (
-    SELECT 1 FROM public.member_contributions mc2
-    WHERE mc2.member_id = (
-            SELECT id FROM public.members WHERE email = 'oluwatobi.amida@eigmembers.ng'
-          )
-      AND mc2.contribution_date = mc.contribution_date
-      AND mc2.amount           = mc.amount
-  );
-
--- Delete any remaining contributions for the duplicate member that couldn't be
--- merged because the same date+amount already exists for the correct member.
-DELETE FROM public.member_contributions
 WHERE member_id = (
   SELECT id FROM public.members WHERE email = 'oluwatobi.paul@eigmembers.ng'
 );
 
 
 -- ============================================================
--- STEP 2: Re-point contribution_periods tracking records
--- (contributions table — tracks paid/unpaid per period per member)
+-- STEP 2: Re-point contribution_periods tracking records.
+-- (Guarded to avoid unique-constraint violations on period_id
+--  since each member can only have one record per period.)
 -- ============================================================
 UPDATE public.contributions c
 SET member_id = (
@@ -62,7 +49,7 @@ WHERE c.member_id = (
       AND c2.period_id = c.period_id
   );
 
--- Delete any remaining period records for the duplicate member
+-- Delete any period records for the duplicate that couldn't be merged
 DELETE FROM public.contributions
 WHERE member_id = (
   SELECT id FROM public.members WHERE email = 'oluwatobi.paul@eigmembers.ng'
@@ -71,7 +58,7 @@ WHERE member_id = (
 
 -- ============================================================
 -- STEP 3: Ensure the Mar 2026 ₦200,000 contribution exists for
--- the correct member (guarded — no-op if already present).
+-- the correct member (no-op if already moved from step 1 above).
 -- ============================================================
 INSERT INTO public.member_contributions
   (member_id, amount, contribution_date, payment_method, notes)
@@ -93,20 +80,18 @@ WHERE m.email = 'oluwatobi.amida@eigmembers.ng'
 
 -- ============================================================
 -- STEP 4: Fix bank_statement_txns
---   a) Remove orphaned entries that still point to the old
---      duplicate member's contributions (which are now gone).
---   b) Rename any entries with the old name variants.
---   c) Add a matched entry for Mar 2026 if one is missing.
+--   a) Remove orphaned matched entries (matched_id points to
+--      a contribution row that no longer exists).
+--   b) Rename remaining entries that still use the old name.
+--   c) Add matched entries for any contributions that lack one.
 -- ============================================================
 
--- Remove any bank_statement_txns whose matched_id points to a
--- member_contributions row that no longer exists (dangling references
--- left over if the old contribution couldn't be moved in step 1).
+-- Remove orphaned entries
 DELETE FROM public.bank_statement_txns
 WHERE matched_type = 'contribution'
   AND matched_id NOT IN (SELECT id FROM public.member_contributions);
 
--- Fix description for any remaining entries still using the old name
+-- Rename entries for Oluwatobi Amida's contributions that still show the old name
 UPDATE public.bank_statement_txns
 SET description = 'Contribution — Oluwatobi Amida'
 WHERE matched_type = 'contribution'
@@ -117,13 +102,13 @@ WHERE matched_type = 'contribution'
   )
   AND description != 'Contribution — Oluwatobi Amida';
 
--- Also catch any description-only remnants (no matched_id, e.g. from old seeds)
+-- Catch any loose description-only remnants
 UPDATE public.bank_statement_txns
 SET description = 'Contribution — Oluwatobi Amida'
 WHERE description ILIKE '%Amida Oluwatobi Paul%'
    OR description ILIKE '%Oluwatobi Paul%';
 
--- Add bank_statement_txn for Mar 2026 if missing
+-- Add missing bank_statement_txns entries for any contribution without one
 INSERT INTO public.bank_statement_txns
   (txn_date, description, credit, bank_reference, notes, status, matched_type, matched_id)
 SELECT
@@ -137,9 +122,7 @@ SELECT
   mc.id
 FROM public.member_contributions mc
 JOIN public.members m ON m.id = mc.member_id
-WHERE m.email            = 'oluwatobi.amida@eigmembers.ng'
-  AND mc.contribution_date = '2026-03-26'
-  AND mc.amount            = 200000.00
+WHERE m.email = 'oluwatobi.amida@eigmembers.ng'
   AND NOT EXISTS (
     SELECT 1 FROM public.bank_statement_txns bst
     WHERE bst.matched_type = 'contribution'
@@ -149,7 +132,6 @@ WHERE m.email            = 'oluwatobi.amida@eigmembers.ng'
 
 -- ============================================================
 -- STEP 5: Delete the duplicate member record
--- (safe — all FK-dependent rows already re-pointed or deleted above)
 -- ============================================================
 DELETE FROM public.members
 WHERE email = 'oluwatobi.paul@eigmembers.ng';

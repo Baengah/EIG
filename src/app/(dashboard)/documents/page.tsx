@@ -40,7 +40,7 @@ export default async function DocumentsPage() {
   return (
     <div>
       <Header title="Documents" subtitle="Bank statements, contract notes, and fund statements" />
-      <div className="p-6 space-y-6">
+      <div className="p-4 sm:p-6 space-y-6">
 
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -86,11 +86,11 @@ export default async function DocumentsPage() {
                 <thead className="bg-muted/30">
                   <tr>
                     <th className="text-left px-5 py-3 text-xs font-medium text-muted-foreground">File</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Type</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Period</th>
+                    <th className="hidden sm:table-cell text-left px-4 py-3 text-xs font-medium text-muted-foreground">Type</th>
+                    <th className="hidden md:table-cell text-left px-4 py-3 text-xs font-medium text-muted-foreground">Period</th>
                     <th className="text-center px-4 py-3 text-xs font-medium text-muted-foreground">Status</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Uploaded</th>
-                    <th className="text-right px-5 py-3 text-xs font-medium text-muted-foreground">Size</th>
+                    <th className="hidden sm:table-cell text-left px-4 py-3 text-xs font-medium text-muted-foreground">Uploaded</th>
+                    <th className="hidden md:table-cell text-right px-5 py-3 text-xs font-medium text-muted-foreground">Size</th>
                     <th className="px-4 py-3"></th>
                   </tr>
                 </thead>
@@ -106,10 +106,10 @@ export default async function DocumentsPage() {
                             <span className="font-medium text-foreground truncate max-w-xs">{doc.file_name}</span>
                           </div>
                         </td>
-                        <td className="px-4 py-3 text-muted-foreground">
+                        <td className="hidden sm:table-cell px-4 py-3 text-muted-foreground">
                           {TYPE_LABELS[doc.document_type] ?? doc.document_type}
                         </td>
-                        <td className="px-4 py-3 text-muted-foreground">
+                        <td className="hidden md:table-cell px-4 py-3 text-muted-foreground">
                           {doc.period_month && doc.period_year
                             ? `${new Date(doc.period_year, doc.period_month - 1).toLocaleString("en-NG", { month: "short", year: "numeric" })}`
                             : "—"}
@@ -120,10 +120,10 @@ export default async function DocumentsPage() {
                             {doc.processing_status}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-muted-foreground">
+                        <td className="hidden sm:table-cell px-4 py-3 text-muted-foreground">
                           {new Date(doc.upload_date).toLocaleDateString("en-NG", { day: "2-digit", month: "short", year: "numeric" })}
                         </td>
-                        <td className="px-5 py-3 text-right text-muted-foreground">
+                        <td className="hidden md:table-cell px-5 py-3 text-right text-muted-foreground">
                           {doc.file_size
                             ? doc.file_size < 1024 * 1024
                               ? `${(doc.file_size / 1024).toFixed(0)} KB`

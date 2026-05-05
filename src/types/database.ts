@@ -574,6 +574,43 @@ export type Database = {
         };
         Relationships: [];
       };
+      unmatched_bank_entries: {
+        Row: {
+          id: string;
+          entry_date: string;
+          description: string;
+          amount: number;
+          bank_reference: string | null;
+          notes: string | null;
+          status: "pending" | "resolved" | "ignored";
+          resolved_as: "contribution" | "interest_income" | "other_income" | "bank_charge" | "tax" | "broker_transfer" | "ignored" | null;
+          resolved_at: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          entry_date: string;
+          description: string;
+          amount: number;
+          bank_reference?: string | null;
+          notes?: string | null;
+          status?: "pending" | "resolved" | "ignored";
+          resolved_as?: "contribution" | "interest_income" | "other_income" | "bank_charge" | "tax" | "broker_transfer" | "ignored" | null;
+          resolved_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          entry_date?: string;
+          description?: string;
+          amount?: number;
+          bank_reference?: string | null;
+          notes?: string | null;
+          status?: "pending" | "resolved" | "ignored";
+          resolved_as?: "contribution" | "interest_income" | "other_income" | "bank_charge" | "tax" | "broker_transfer" | "ignored" | null;
+          resolved_at?: string | null;
+        };
+        Relationships: [];
+      };
       portfolio_snapshots: {
         Row: {
           id: string;
@@ -687,6 +724,10 @@ export type Database = {
         Args: Record<string, never>;
         Returns: boolean;
       };
+      is_member: {
+        Args: Record<string, never>;
+        Returns: boolean;
+      };
     };
     Enums: {
       [_ in never]: never;
@@ -712,6 +753,7 @@ export type PortfolioSnapshot = Database["public"]["Tables"]["portfolio_snapshot
 export type BankAccount = Database["public"]["Tables"]["bank_accounts"]["Row"];
 export type BrokerAccount = Database["public"]["Tables"]["broker_accounts"]["Row"];
 export type BankLedgerEntry = Database["public"]["Tables"]["bank_ledger"]["Row"];
+export type UnmatchedBankEntry = Database["public"]["Tables"]["unmatched_bank_entries"]["Row"];
 export type HoldingWithValue = Database["public"]["Views"]["v_holdings_with_value"]["Row"];
 export type PortfolioSummary = Database["public"]["Views"]["v_portfolio_summary"]["Row"];
 export type ContributionStatus = Database["public"]["Views"]["v_contribution_status"]["Row"];

@@ -80,7 +80,7 @@ export function AttributeEntryButton({ entry, members }: { entry: Entry; members
           entry_date: entry.entry_date,
           description: description.trim(),
           amount: entry.amount,
-          category: option.ledgerCategory!,
+          category: option.ledgerCategory! as "interest_income" | "bank_charge" | "tax" | "broker_transfer" | "other_income" | "other_expense",
           bank_reference: entry.bank_reference ?? undefined,
         });
         if (error) throw error;

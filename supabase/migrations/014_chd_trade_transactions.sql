@@ -1,13 +1,21 @@
 -- EIG Platform — CHD individual trade transactions (70 records)
--- Source: 74 Chapel Hill Denham contract notes (3 duplicates skipped, 1 duplicate CN noted)
+-- Source: 74 Chapel Hill Denham contract notes (3 duplicates skipped)
 -- Covers: 2025-08-27 → 2026-04-30 (69 buys + 1 sell)
+--
 -- Fee mapping:
---   brokerage_fee = Broker Commission (incl VAT) + NGX Fees where applicable
+--   brokerage_fee = Broker Commission (incl VAT) + NGX Fees where charged on sells
 --   cscs_fee      = CSCS % Fee + CSCS X-Alert per-ticket fee
 --   sec_fee       = SEC Fees
 --   stamp_duty    = Stamp Duty
 --   total_fees    = exact total from contract note
---   net_amount    = total contract amount (buy: consideration + fees; sell: consideration − fees)
+--   net_amount    = total contract amount
+--                   buy:  consideration + all fees (cash paid out to CHD)
+--                   sell: consideration − all fees (proceeds received from CHD)
+--
+-- NOTE: Bank outflows are NOT created here. The Zenith bank account only sees
+-- periodic lump-sum "Transfer to CHD" entries, already seeded in bank_ledger
+-- (migration 006) and synced to bank_statement_txns (migration 013).
+-- These transaction rows record what CHD did with that money.
 
 -- ============================================================
 -- STEP 1: Add UACN stock
@@ -114,6 +122,7 @@ FROM (VALUES
   ('0005372677','2026-03-31'::date,'buy','NGXGROUP',    1400, 169.000, 236600.00, 3433.66,  709.80,  21.50,  189.28,  4354.24, 240954.24,'2026-04-02'::date),
   -- SELL: net_amount = consideration − fees = 816,000 − 17,788.30 = 798,211.70
   -- brokerage_fee includes NGX Fees (2,631.60); cscs_fee includes CSCS% (2,631.60) + X-Alert (30.10)
+  -- Proceeds returned from CHD to Zenith bank are already in bank_ledger (migration 006)
   ('0005373014','2026-03-31'::date,'sell','UACN',       8500,  96.000, 816000.00,14473.80,    0.00,2661.70,  652.80, 17788.30, 798211.70,'2026-04-02'::date),
   ('0005383584','2026-04-10'::date,'buy','ARADEL',         2,1235.000,   2470.00,   35.85,    7.41,   6.45,    1.98,    51.69,   2521.69,'2026-04-14'::date),
   ('0005383569','2026-04-10'::date,'buy','ARADEL',        14,1235.000,  17290.00,  250.93,   51.87,   6.45,   13.83,   323.08,  17613.08,'2026-04-14'::date),
@@ -135,61 +144,4 @@ CROSS JOIN (
 WHERE NOT EXISTS (
   SELECT 1 FROM public.transactions t
   WHERE t.contract_note_number = v.note_num
-);
-
-
--- ============================================================
--- STEP 3: Create matching bank_statement_txns entries
--- BUY  → debit  (cash leaving bank to settle purchase)
--- SELL → credit (cash entering bank from sale proceeds)
--- Idempotent: skips entries already matched to a transaction
--- ============================================================
-INSERT INTO public.bank_statement_txns (
-  txn_date, description,
-  debit, credit,
-  status, matched_type, matched_id, notes
-)
-SELECT
-  t.settlement_date,
-  CASE t.transaction_type
-    WHEN 'buy'  THEN 'CHD Buy — '  || s.ticker || ' × ' || t.quantity::BIGINT || ' @ ₦' || t.price
-    WHEN 'sell' THEN 'CHD Sell — ' || s.ticker || ' × ' || t.quantity::BIGINT || ' @ ₦' || t.price
-  END,
-  CASE WHEN t.transaction_type = 'buy'  THEN t.net_amount ELSE NULL END,
-  CASE WHEN t.transaction_type = 'sell' THEN t.net_amount ELSE NULL END,
-  'matched',
-  'transaction',
-  t.id,
-  'Contract note ' || t.contract_note_number
-FROM public.transactions t
-JOIN public.stocks s ON s.id = t.stock_id
-WHERE t.contract_note_number IN (
-  '0005173848','0005174348','0005174367','0005174371','0005174361',
-  '0005175751','0005175754','0005175743','0005175747',
-  '0005177410','0005177405','0005177416',
-  '0005188836','0005188834','0005190551',
-  '0005195088','0005195098','0005195634',
-  '0005197818','0005198070',
-  '0005199055','0005199057','0005199072',
-  '0005206404',
-  '0005219072','0005219090','0005233102',
-  '0005219103','0005233738',
-  '0005238664','0005238682','0005239342',
-  '0005251864','0005251880','0005251881','0005251884',
-  '0005266760','0005266761','0005267078',
-  '0005272558',
-  '0005296678','0005296715','0005296705','0005296721',
-  '0005305313','0005305320','0005305323',
-  '0005341131','0005341130','0005341141',
-  '0005345048','0005345047','0005345190',
-  '0005372596','0005372602','0005372633','0005372655','0005372686','0005372677',
-  '0005373014',
-  '0005383584','0005383569',
-  '0005387361','0005387524',
-  '0005389355','0005389348','0005389365',
-  '0005410518','0005410534','0005410549'
-)
-AND NOT EXISTS (
-  SELECT 1 FROM public.bank_statement_txns b
-  WHERE b.matched_type = 'transaction' AND b.matched_id = t.id
 );

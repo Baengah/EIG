@@ -13,7 +13,7 @@ export const revalidate = 300; // Revalidate every 5 minutes
 async function getDashboardData() {
   const supabase = await createClient();
 
-  const [summary, snapshot, periodRes, recentTxns, topHoldings, activeMembersCount] = await Promise.all([
+  const [summary, snapshot, periodRes, recentTxns, topHoldings, activeMembersCount, contribSumRes] = await Promise.all([
     supabase.from("v_portfolio_summary").select("*").single(),
     supabase
       .from("portfolio_snapshots")
@@ -41,6 +41,7 @@ async function getDashboardData() {
       .from("members")
       .select("id", { count: "exact" })
       .eq("is_active", true),
+    supabase.from("member_contributions").select("amount"),
   ]);
 
   // Fetch contribution counts for the latest period
@@ -76,6 +77,8 @@ async function getDashboardData() {
     mutual_funds: t.mutual_fund_id ? fundMap[t.mutual_fund_id] ?? null : null,
   }));
 
+  const totalMemberContributions = (contribSumRes.data ?? []).reduce((sum, r) => sum + (r.amount ?? 0), 0);
+
   return {
     summary: summary.data,
     snapshots: snapshot.data ?? [],
@@ -85,11 +88,12 @@ async function getDashboardData() {
     recentTxns: enrichedTxns,
     topHoldings: topHoldings.data ?? [],
     memberCount: activeMembersCount.count ?? 0,
+    totalMemberContributions,
   };
 }
 
 export default async function DashboardPage() {
-  const { summary, snapshots, latestPeriod, totalContribs, paidContribs, recentTxns, topHoldings, memberCount } = await getDashboardData();
+  const { summary, snapshots, latestPeriod, totalContribs, paidContribs, recentTxns, topHoldings, memberCount, totalMemberContributions } = await getDashboardData();
 
   const portfolioValue = summary?.total_value ?? 0;
   const totalCost = summary?.total_cost ?? 0;
@@ -114,7 +118,7 @@ export default async function DashboardPage() {
       title: "Total Invested",
       value: formatCurrency(totalCost),
       change: null,
-      subtext: `Across ${summary?.total_positions ?? 0} positions`,
+      subtext: `${formatCurrency(totalMemberContributions)} raised · ${summary?.total_positions ?? 0} positions`,
       positive: true,
       icon: TrendingUp,
       color: "bg-purple-50 dark:bg-purple-950",

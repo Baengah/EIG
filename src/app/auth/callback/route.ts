@@ -36,7 +36,9 @@ export async function GET(request: NextRequest) {
       type: type as "invite" | "recovery" | "signup" | "email",
     });
     if (!error) {
-      const dest = type === "invite" ? "/auth/accept-invite" : next;
+      let dest = next;
+      if (type === "invite")   dest = "/auth/accept-invite";
+      if (type === "recovery") dest = "/auth/set-password";
       return NextResponse.redirect(new URL(dest, origin));
     }
   }

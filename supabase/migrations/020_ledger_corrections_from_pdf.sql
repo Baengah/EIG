@@ -177,15 +177,73 @@ WHERE NOT EXISTS (
 -- STEP 5: Add The Initiates Plc IPO subscription (13-Jan-26)
 --
 -- ₦399,000 transferred from CHD brokerage for the public offer.
--- Recorded as a 'buy' at cost; no contract note (direct transfer).
+-- Units not yet allotted so quantity/price are NULL.
+-- The holdings trigger must be patched first (step 5a) to skip
+-- transactions where quantity IS NULL, otherwise it tries to INSERT
+-- a holding row with a NOT NULL quantity column and fails.
 -- ============================================================
 
--- 5a. Ensure stock exists
+-- 5a. Patch trigger to guard against NULL quantity (IPO/public offers)
+CREATE OR REPLACE FUNCTION public.update_holding_after_transaction()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_holding_id UUID;
+  v_current_qty NUMERIC;
+  v_current_avg_cost NUMERIC;
+  v_new_qty NUMERIC;
+  v_new_avg_cost NUMERIC;
+BEGIN
+  -- Only process buy/sell transactions
+  IF NEW.transaction_type NOT IN ('buy', 'sell', 'transfer_in', 'transfer_out') THEN
+    RETURN NEW;
+  END IF;
+
+  -- Skip if quantity is NULL (e.g. IPO / public offer pending allotment)
+  IF NEW.quantity IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  -- Find existing holding
+  SELECT id, quantity, average_cost
+  INTO v_holding_id, v_current_qty, v_current_avg_cost
+  FROM public.holdings
+  WHERE asset_type = NEW.asset_type
+    AND (stock_id = NEW.stock_id OR mutual_fund_id = NEW.mutual_fund_id)
+    AND (broker_account_id = NEW.broker_account_id OR (broker_account_id IS NULL AND NEW.broker_account_id IS NULL));
+
+  IF NEW.transaction_type IN ('buy', 'transfer_in') THEN
+    IF v_holding_id IS NULL THEN
+      INSERT INTO public.holdings (asset_type, stock_id, mutual_fund_id, broker_account_id, quantity, average_cost)
+      VALUES (NEW.asset_type, NEW.stock_id, NEW.mutual_fund_id, NEW.broker_account_id, NEW.quantity, NEW.price);
+    ELSE
+      v_new_qty      := v_current_qty + NEW.quantity;
+      v_new_avg_cost := ((v_current_qty * v_current_avg_cost) + (NEW.quantity * NEW.price)) / v_new_qty;
+      UPDATE public.holdings
+      SET quantity = v_new_qty, average_cost = v_new_avg_cost
+      WHERE id = v_holding_id;
+    END IF;
+
+  ELSIF NEW.transaction_type IN ('sell', 'transfer_out') THEN
+    IF v_holding_id IS NOT NULL THEN
+      v_new_qty := v_current_qty - NEW.quantity;
+      IF v_new_qty <= 0 THEN
+        DELETE FROM public.holdings WHERE id = v_holding_id;
+      ELSE
+        UPDATE public.holdings SET quantity = v_new_qty WHERE id = v_holding_id;
+      END IF;
+    END IF;
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- 5b. Ensure stock exists
 INSERT INTO public.stocks (ticker, company_name, sector, market_cap_category, is_active)
 VALUES ('INITIATES', 'The Initiates Plc', 'Financial Services', 'small', TRUE)
 ON CONFLICT (ticker) DO NOTHING;
 
--- 5b. Insert IPO transaction (idempotent on contract_note_number)
+-- 5c. Insert IPO transaction (idempotent on contract_note_number)
 INSERT INTO public.transactions (
   transaction_date, transaction_type, asset_type,
   stock_id, broker_account_id,

@@ -85,7 +85,12 @@ export default async function LedgerPage() {
 
   const rawContribs    = contribsRes.data    ?? [];
   const rawTxns        = txnsRes.data        ?? [];
-  const rawBankEntries = bankLedgerRes.data  ?? [];
+  // Double-filter broker_transfers in memory — Supabase .neq() can fail silently
+  // when the column value is stored with different casing or when RLS transforms data.
+  // Broker transfers are internal Zenith→CHD movements, not pool outflows.
+  const rawBankEntries = (bankLedgerRes.data ?? []).filter(
+    bl => (bl.category as string) !== "broker_transfer"
+  );
 
   const unsorted: Omit<LedgerEntry, "balance">[] = [];
 
@@ -245,15 +250,18 @@ export default async function LedgerPage() {
   });
 
   // ── Summary metrics ──────────────────────────────────────────
-  const totalCapital  = entries.filter(e => e.type_key === "contribution")
-                               .reduce((s, e) => s + (e.credit ?? 0), 0);
-  const totalDeployed = entries.filter(e => ["buy", "ipo", "rights_issue"].includes(e.type_key) && e.debit != null)
-                               .reduce((s, e) => s + (e.debit ?? 0), 0);
-  const totalIncome   = entries.filter(e => ["dividend", "interest_income"].includes(e.type_key))
-                               .reduce((s, e) => s + (e.credit ?? 0), 0);
-  const totalFees     = entries.filter(e => e.fees != null)
-                               .reduce((s, e) => s + (e.fees ?? 0), 0);
-  const finalBalance  = runningBalance;
+  const totalCapital       = entries.filter(e => e.type_key === "contribution")
+                                    .reduce((s, e) => s + (e.credit ?? 0), 0);
+  const totalIncome        = entries.filter(e => ["dividend", "interest_income"].includes(e.type_key))
+                                    .reduce((s, e) => s + (e.credit ?? 0), 0);
+  const totalSaleProceeds  = entries.filter(e => e.type_key === "sell")
+                                    .reduce((s, e) => s + (e.credit ?? 0), 0);
+  // "Total Deployed" = all money that has entered the investment pool
+  // (member capital + income reinvested + sale proceeds reinvested)
+  const totalDeployed      = totalCapital + totalIncome + totalSaleProceeds;
+  const totalFees          = entries.filter(e => e.fees != null)
+                                    .reduce((s, e) => s + (e.fees ?? 0), 0);
+  const finalBalance       = runningBalance;
 
   const totalDebit  = entries.reduce((s, e) => s + (e.debit  ?? 0), 0);
   const totalCredit = entries.reduce((s, e) => s + (e.credit ?? 0), 0);
@@ -281,7 +289,7 @@ export default async function LedgerPage() {
               <p className="text-xs text-muted-foreground">Total Deployed</p>
             </div>
             <p className="text-xl font-bold text-foreground">{formatCurrency(totalDeployed)}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">incl. ₦{totalFees.toLocaleString("en-NG", { minimumFractionDigits: 2 })} fees</p>
+            <p className="text-xs text-muted-foreground mt-0.5">capital + income + sale proceeds</p>
           </div>
           <div className="bg-card border border-border rounded-xl p-4">
             <div className="flex items-center gap-2 mb-1">

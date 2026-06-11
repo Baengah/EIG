@@ -15,26 +15,35 @@ import {
   ChevronRight,
   LogOut,
   AlertTriangle,
+  X,
 } from "lucide-react";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
+import { useSidebar } from "./SidebarContext";
 
 const navItems = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/portfolio", label: "Portfolio", icon: BarChart3 },
-  { href: "/contributions", label: "Contributions", icon: Wallet },
-  { href: "/transactions", label: "Transactions", icon: ArrowLeftRight },
-  { href: "/transactions/unmatched", label: "Unmatched Entries", icon: AlertTriangle },
-  { href: "/members", label: "Members", icon: Users },
-  { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/",                        label: "Dashboard",       icon: LayoutDashboard },
+  { href: "/portfolio",               label: "Portfolio",       icon: BarChart3       },
+  { href: "/contributions",           label: "Contributions",   icon: Wallet          },
+  { href: "/transactions",            label: "Transactions",    icon: ArrowLeftRight  },
+  { href: "/transactions/unmatched",  label: "Unmatched",       icon: AlertTriangle   },
+  { href: "/members",                 label: "Members",         icon: Users           },
+  { href: "/settings",                label: "Settings",        icon: Settings        },
 ];
 
-export function Sidebar() {
+function SidebarContent({
+  collapsed,
+  setCollapsed,
+  onNav,
+}: {
+  collapsed: boolean;
+  setCollapsed: (v: boolean) => void;
+  onNav?: () => void;
+}) {
   const pathname = usePathname();
   const router = useRouter();
   const supabase = createClient();
-  const [collapsed, setCollapsed] = useState(false);
 
   async function handleSignOut() {
     await supabase.auth.signOut();
@@ -43,14 +52,9 @@ export function Sidebar() {
   }
 
   return (
-    <aside
-      className={cn(
-        "flex flex-col bg-brand-900 text-white transition-all duration-300 ease-in-out shrink-0",
-        collapsed ? "w-16" : "w-60"
-      )}
-    >
+    <div className="flex flex-col h-full">
       {/* Logo */}
-      <div className={cn("flex items-center h-16 px-4 border-b border-brand-700", collapsed ? "justify-center" : "gap-3")}>
+      <div className={cn("flex items-center h-16 px-4 border-b border-brand-700 shrink-0", collapsed ? "justify-center" : "gap-3")}>
         <div className="w-8 h-8 bg-gold-500 rounded-lg flex items-center justify-center shrink-0">
           <TrendingUp className="w-5 h-5 text-white" />
         </div>
@@ -71,6 +75,7 @@ export function Sidebar() {
               key={href}
               href={href}
               title={collapsed ? label : undefined}
+              onClick={onNav}
               className={cn(
                 "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
                 isActive
@@ -86,7 +91,7 @@ export function Sidebar() {
       </nav>
 
       {/* Bottom actions */}
-      <div className="p-2 border-t border-brand-700 space-y-0.5">
+      <div className="p-2 border-t border-brand-700 space-y-0.5 shrink-0">
         <button
           onClick={handleSignOut}
           title={collapsed ? "Sign out" : undefined}
@@ -97,11 +102,63 @@ export function Sidebar() {
         </button>
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-blue-300 hover:bg-white/10 transition-colors w-full"
+          className="hidden md:flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-blue-300 hover:bg-white/10 transition-colors w-full"
         >
           {collapsed ? <ChevronRight className="w-4 h-4" /> : <><ChevronLeft className="w-4 h-4" /><span>Collapse</span></>}
         </button>
       </div>
-    </aside>
+    </div>
+  );
+}
+
+export function Sidebar() {
+  const [collapsed, setCollapsed] = useState(false);
+  const { mobileOpen, closeMobile } = useSidebar();
+
+  return (
+    <>
+      {/* Desktop sidebar */}
+      <aside
+        className={cn(
+          "hidden md:flex flex-col bg-brand-900 text-white transition-all duration-300 ease-in-out shrink-0",
+          collapsed ? "w-16" : "w-60"
+        )}
+      >
+        <SidebarContent collapsed={collapsed} setCollapsed={setCollapsed} />
+      </aside>
+
+      {/* Mobile overlay backdrop */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/60 md:hidden"
+          onClick={closeMobile}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* Mobile drawer */}
+      <aside
+        className={cn(
+          "fixed inset-y-0 left-0 z-50 w-72 bg-brand-900 text-white flex flex-col",
+          "transform transition-transform duration-300 ease-in-out md:hidden",
+          mobileOpen ? "translate-x-0" : "-translate-x-full"
+        )}
+      >
+        {/* Close button */}
+        <button
+          onClick={closeMobile}
+          className="absolute top-4 right-4 p-1.5 rounded-lg text-blue-300 hover:bg-white/10 transition-colors"
+          aria-label="Close navigation"
+        >
+          <X className="w-5 h-5" />
+        </button>
+
+        <SidebarContent
+          collapsed={false}
+          setCollapsed={() => {}}
+          onNav={closeMobile}
+        />
+      </aside>
+    </>
   );
 }

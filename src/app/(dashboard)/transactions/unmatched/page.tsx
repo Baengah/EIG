@@ -1,410 +1,415 @@
-import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/server";
 import { Header } from "@/components/layout/Header";
 import { formatCurrency } from "@/lib/utils";
-import { AlertTriangle, CheckCircle2, ArrowUpRight, ArrowDownRight, FileText, BarChart3 } from "lucide-react";
-import { AttributeEntryButton } from "@/components/bank/AttributeEntryButton";
-import { AddBankStatementEntry } from "@/components/bank/AddBankStatementEntry";
-import { EditBankEntryButton } from "@/components/bank/EditBankEntryButton";
-
-type BankTxnRow = {
-  id: string;
-  txn_date: string;
-  description: string;
-  debit: number | null;
-  credit: number | null;
-  bank_reference: string | null;
-  notes: string | null;
-  status: "matched" | "unmatched" | "ignored";
-  matched_type: string | null;
-  matched_id: string | null;
-};
+import { BookOpen, ArrowUpRight, ArrowDownRight, Wallet, TrendingUp } from "lucide-react";
 
 export const revalidate = 0;
 
-export default async function UnmatchedPage() {
-  const [supabase, svc] = await Promise.all([createClient(), createServiceClient()]);
-  const { data: { user } } = await supabase.auth.getUser();
+type LedgerEntry = {
+  id: string;
+  date: string;
+  description: string;
+  type_label: string;
+  type_key: string;
+  asset: string | null;
+  member: string | null;
+  units: number | null;
+  price: number | null;
+  fees: number | null;
+  fee_brokerage: number | null;
+  fee_sec: number | null;
+  fee_cscs: number | null;
+  fee_stamp: number | null;
+  debit: number | null;
+  credit: number | null;
+  notes: string | null;
+  reference: string | null;
+  balance: number;
+};
 
-  const [txnsRes, membersRes, categoriesRes, profileRes] = await Promise.all([
-    svc.from("bank_statement_txns").select("*").order("txn_date", { ascending: false }),
-    svc.from("members").select("id, full_name, member_number").order("full_name"),
-    svc.from("ledger_categories").select("code, type, display_name, description").eq("is_active", true).order("sort_order"),
-    user ? supabase.from("profiles").select("role").eq("id", user.id).single() : null,
+const BANK_CATEGORY_LABELS: Record<string, string> = {
+  interest_income: "Interest Income",
+  bank_charge:     "Bank Charge",
+  tax:             "Tax / WHT",
+  other_income:    "Other Income",
+  other_expense:   "Other Expense",
+};
+
+const TYPE_BADGE: Record<string, string> = {
+  contribution:    "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
+  buy:             "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300",
+  ipo:             "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
+  sell:            "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300",
+  dividend:        "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300",
+  interest_income: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300",
+  bank_charge:     "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300",
+  tax:             "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300",
+};
+
+function fmtDate(d: string) {
+  return new Date(d).toLocaleDateString("en-NG", {
+    day: "2-digit", month: "short", year: "numeric",
+  });
+}
+
+function fmtNum(n: number | null | undefined, dp = 2) {
+  if (n == null) return "—";
+  return n.toLocaleString("en-NG", { minimumFractionDigits: dp });
+}
+
+export default async function LedgerPage() {
+  const svc = await createServiceClient();
+
+  const [contribsRes, txnsRes, bankLedgerRes] = await Promise.all([
+    svc
+      .from("member_contributions")
+      .select("id, contribution_date, amount, bank_reference, notes, members(full_name)")
+      .order("contribution_date", { ascending: true }),
+    svc
+      .from("transactions")
+      .select(`
+        id, transaction_date, transaction_type, notes,
+        quantity, price, gross_amount, net_amount,
+        brokerage_fee, sec_fee, cscs_fee, stamp_duty, total_fees,
+        contract_note_number,
+        stocks(ticker, company_name),
+        mutual_funds(fund_name)
+      `)
+      .order("transaction_date", { ascending: true }),
+    svc
+      .from("bank_ledger")
+      .select("id, entry_date, description, amount, category, bank_reference")
+      .neq("category", "broker_transfer")
+      .order("entry_date", { ascending: true }),
   ]);
 
-  const allTxns    = (txnsRes.data ?? []) as BankTxnRow[];
-  const members    = membersRes.data ?? [];
-  const categories = (categoriesRes.data ?? []) as { code: string; type: "income" | "cost" | "transfer"; display_name: string; description: string | null }[];
-  const isAdmin    = profileRes?.data?.role === "admin";
+  const rawContribs    = contribsRes.data    ?? [];
+  const rawTxns        = txnsRes.data        ?? [];
+  const rawBankEntries = bankLedgerRes.data  ?? [];
 
-  // Fetch bank_ledger categories for matched bank_ledger entries
-  const bankLedgerIds = allTxns
-    .filter(t => t.matched_type === "bank_ledger" && t.matched_id)
-    .map(t => t.matched_id as string);
+  const unsorted: Omit<LedgerEntry, "balance">[] = [];
 
-  const ledgerEntriesRes = bankLedgerIds.length > 0
-    ? await svc.from("bank_ledger").select("id, category").in("id", bankLedgerIds)
-    : { data: [] as { id: string; category: string }[] };
-
-  const bankLedgerCategoryMap = new Map<string, string>(
-    (ledgerEntriesRes.data ?? []).map(bl => [bl.id, bl.category])
-  );
-  const categoryDisplayMap = new Map<string, string>(
-    categories.map(c => [c.code, c.display_name])
-  );
-
-  function getStatusLabel(txn: BankTxnRow): string {
-    if (txn.status === "unmatched") return "Unmatched";
-    if (txn.status === "ignored")   return "Ignored";
-    if (txn.matched_type === "contribution") return "Contribution";
-    if (txn.matched_type === "transaction")  return "Dividend";
-    if (txn.matched_type === "bank_ledger") {
-      const cat = bankLedgerCategoryMap.get(txn.matched_id as string);
-      if (cat) return categoryDisplayMap.get(cat) ?? cat;
-    }
-    return "Matched";
+  // ── 1. Member contributions ──────────────────────────────────
+  for (const c of rawContribs) {
+    const memberName = (c.members as unknown as { full_name: string } | null)?.full_name ?? "Unknown";
+    unsorted.push({
+      id:           `c-${c.id}`,
+      date:         c.contribution_date,
+      description:  `Capital Contribution — ${memberName}`,
+      type_label:   "Contribution",
+      type_key:     "contribution",
+      asset:        null,
+      member:       memberName,
+      units:        null,
+      price:        null,
+      fees:         null,
+      fee_brokerage: null, fee_sec: null, fee_cscs: null, fee_stamp: null,
+      debit:        null,
+      credit:       Number(c.amount),
+      notes:        c.notes,
+      reference:    c.bank_reference,
+    });
   }
 
-  const unmatched = allTxns.filter(t => t.status === "unmatched");
-  const matched   = allTxns.filter(t => t.status === "matched");
-  const ignored   = allTxns.filter(t => t.status === "ignored");
+  // ── 2. Investment transactions ───────────────────────────────
+  for (const t of rawTxns) {
+    const ticker  = (t.stocks as { ticker?: string } | null)?.ticker
+                 ?? (t.mutual_funds as { fund_name?: string } | null)?.fund_name
+                 ?? "—";
+    const company = (t.stocks as { company_name?: string } | null)?.company_name ?? "";
+    const qty   = t.quantity   as number | null;
+    const price = t.price      as number | null;
+    const type  = t.transaction_type as string;
+    const net   = t.net_amount as number | null;
 
-  const totalCredits  = allTxns.reduce((s, t) => s + (t.credit  ?? 0), 0);
-  const totalDebits   = allTxns.reduce((s, t) => s + (t.debit   ?? 0), 0);
-  const unmatchedAmt  = unmatched.reduce((s, t) => s + (t.credit ?? 0) - (t.debit ?? 0), 0);
+    let type_key: string;
+    let type_label: string;
+    let description: string;
+    let debit: number | null   = null;
+    let credit: number | null  = null;
 
-  // Build cash statement groups
-  interface CashGroup { label: string; count: number; total: number; isUnmatched: boolean; }
-  const creditGroups = new Map<string, CashGroup>();
-  const debitGroups  = new Map<string, CashGroup>();
+    switch (type) {
+      case "buy":
+        if (qty == null) {
+          type_key = "ipo";
+          type_label = "IPO Subscription";
+          description = `IPO Subscription — ${ticker}`;
+        } else {
+          type_key = "buy";
+          type_label = "Equity Purchase";
+          description = `Purchase — ${qty.toLocaleString("en-NG")} × ${ticker} @ ₦${fmtNum(price)}`;
+        }
+        debit = net != null ? Number(net) : null;
+        break;
 
-  for (const txn of allTxns) {
-    if (txn.status === "ignored") continue;
-    const label       = getStatusLabel(txn);
-    const isUnmatched = txn.status === "unmatched";
-    if ((txn.credit ?? 0) > 0) {
-      const g = creditGroups.get(label) ?? { label, count: 0, total: 0, isUnmatched };
-      g.count++;
-      g.total += txn.credit ?? 0;
-      creditGroups.set(label, g);
+      case "sell":
+        type_key = "sell";
+        type_label = "Equity Sale";
+        description = `Sale — ${qty != null ? qty.toLocaleString("en-NG") : "—"} × ${ticker} @ ₦${fmtNum(price)}`;
+        credit = net != null ? Number(net) : null;
+        break;
+
+      case "dividend":
+        type_key = "dividend";
+        type_label = "Dividend";
+        description = `Dividend — ${ticker}${company ? ` (${company})` : ""}`;
+        credit = net != null ? Number(net) : null;
+        break;
+
+      case "rights_issue":
+        type_key = "buy";
+        type_label = "Rights Issue";
+        description = `Rights Issue — ${ticker}`;
+        debit = net != null ? Number(net) : null;
+        break;
+
+      case "transfer_in":
+        type_key = "buy";
+        type_label = "Transfer In";
+        description = `Transfer In — ${ticker}`;
+        credit = net != null ? Number(net) : null;
+        break;
+
+      case "transfer_out":
+        type_key = "sell";
+        type_label = "Transfer Out";
+        description = `Transfer Out — ${ticker}`;
+        debit = net != null ? Number(net) : null;
+        break;
+
+      default:
+        type_key = "buy";
+        type_label = type.replace(/_/g, " ");
+        description = `${type_label} — ${ticker}`;
     }
-    if ((txn.debit ?? 0) > 0) {
-      const g = debitGroups.get(label) ?? { label, count: 0, total: 0, isUnmatched };
-      g.count++;
-      g.total += txn.debit ?? 0;
-      debitGroups.set(label, g);
-    }
+
+    unsorted.push({
+      id:           `t-${t.id}`,
+      date:         t.transaction_date as string,
+      description,
+      type_label,
+      type_key,
+      asset:        ticker,
+      member:       null,
+      units:        qty,
+      price,
+      fees:         t.total_fees   != null ? Number(t.total_fees)   : null,
+      fee_brokerage: t.brokerage_fee != null ? Number(t.brokerage_fee) : null,
+      fee_sec:       t.sec_fee      != null ? Number(t.sec_fee)      : null,
+      fee_cscs:      t.cscs_fee     != null ? Number(t.cscs_fee)     : null,
+      fee_stamp:     t.stamp_duty   != null ? Number(t.stamp_duty)   : null,
+      debit,
+      credit,
+      notes:        t.notes as string | null,
+      reference:    t.contract_note_number as string | null,
+    });
   }
 
-  const creditLines = Array.from(creditGroups.values()).sort((a, b) => b.total - a.total);
-  const debitLines  = Array.from(debitGroups.values()).sort((a, b) => b.total - a.total);
+  // ── 3. Bank ledger (interest, charges, taxes — no broker transfers) ──
+  for (const bl of rawBankEntries) {
+    const amt    = Number(bl.amount);
+    const catKey = bl.category ?? "other";
+    unsorted.push({
+      id:           `bl-${bl.id}`,
+      date:         bl.entry_date as string,
+      description:  bl.description as string,
+      type_label:   BANK_CATEGORY_LABELS[catKey] ?? catKey.replace(/_/g, " "),
+      type_key:     catKey,
+      asset:        null,
+      member:       null,
+      units:        null,
+      price:        null,
+      fees:         null,
+      fee_brokerage: null, fee_sec: null, fee_cscs: null, fee_stamp: null,
+      debit:        amt < 0 ? -amt : null,
+      credit:       amt > 0 ?  amt : null,
+      notes:        null,
+      reference:    bl.bank_reference as string | null,
+    });
+  }
+
+  // ── Sort: ascending date; contributions before trades on same date ──
+  unsorted.sort((a, b) => {
+    const d = a.date.localeCompare(b.date);
+    if (d !== 0) return d;
+    if (a.type_key === "contribution" && b.type_key !== "contribution") return -1;
+    if (a.type_key !== "contribution" && b.type_key === "contribution") return  1;
+    return 0;
+  });
+
+  // ── Running balance ──────────────────────────────────────────
+  let runningBalance = 0;
+  const entries: LedgerEntry[] = unsorted.map(e => {
+    runningBalance += (e.credit ?? 0) - (e.debit ?? 0);
+    return { ...e, balance: runningBalance };
+  });
+
+  // ── Summary metrics ──────────────────────────────────────────
+  const totalCapital  = entries.filter(e => e.type_key === "contribution")
+                               .reduce((s, e) => s + (e.credit ?? 0), 0);
+  const totalDeployed = entries.filter(e => ["buy", "ipo", "rights_issue"].includes(e.type_key) && e.debit != null)
+                               .reduce((s, e) => s + (e.debit ?? 0), 0);
+  const totalIncome   = entries.filter(e => ["dividend", "interest_income"].includes(e.type_key))
+                               .reduce((s, e) => s + (e.credit ?? 0), 0);
+  const totalFees     = entries.filter(e => e.fees != null)
+                               .reduce((s, e) => s + (e.fees ?? 0), 0);
+  const finalBalance  = runningBalance;
+
+  const totalDebit  = entries.reduce((s, e) => s + (e.debit  ?? 0), 0);
+  const totalCredit = entries.reduce((s, e) => s + (e.credit ?? 0), 0);
 
   return (
     <div>
       <Header
-        title="Bank Reconciliation"
-        subtitle="All Zenith statement entries matched against contributions, income, and cost records"
+        title="Investment Ledger"
+        subtitle="Complete record of all contributions, trades, income, and costs from inception"
       />
-      <div className="p-6 space-y-6">
+      <div className="p-4 sm:p-6 space-y-6">
 
-        {/* ── Summary cards ─────────────────────────────────── */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {/* ── Summary cards ────────────────────────────────────── */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-card border border-border rounded-xl p-4">
             <div className="flex items-center gap-2 mb-1">
-              <FileText className="w-3.5 h-3.5 text-muted-foreground" />
-              <p className="text-xs text-muted-foreground">Total Entries</p>
+              <Wallet className="w-3.5 h-3.5 text-muted-foreground" />
+              <p className="text-xs text-muted-foreground">Capital Raised</p>
             </div>
-            <p className="text-2xl font-bold text-foreground">{allTxns.length}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">{matched.length} matched · {ignored.length} ignored</p>
-          </div>
-          <div className={`rounded-xl border p-4 ${unmatched.length > 0 ? "bg-amber-50 border-amber-200 dark:bg-amber-900/10 dark:border-amber-700/30" : "bg-card border-border"}`}>
-            <div className="flex items-center gap-2 mb-1">
-              <AlertTriangle className={`w-3.5 h-3.5 ${unmatched.length > 0 ? "text-amber-500" : "text-muted-foreground"}`} />
-              <p className="text-xs text-muted-foreground">Unmatched</p>
-            </div>
-            <p className="text-2xl font-bold text-foreground">{unmatched.length}</p>
-            {unmatchedAmt !== 0 && (
-              <p className={`text-xs mt-0.5 font-medium ${unmatchedAmt > 0 ? "text-gain" : "text-loss"}`}>
-                {unmatchedAmt > 0 ? "+" : ""}{formatCurrency(unmatchedAmt)}
-              </p>
-            )}
-          </div>
-          <div className="bg-card border border-border rounded-xl p-4">
-            <div className="flex items-center gap-2 mb-1">
-              <ArrowUpRight className="w-3.5 h-3.5 text-gain" />
-              <p className="text-xs text-muted-foreground">Total Credits</p>
-            </div>
-            <p className="text-xl font-bold text-gain">{formatCurrency(totalCredits)}</p>
+            <p className="text-xl font-bold text-foreground">{formatCurrency(totalCapital)}</p>
           </div>
           <div className="bg-card border border-border rounded-xl p-4">
             <div className="flex items-center gap-2 mb-1">
               <ArrowDownRight className="w-3.5 h-3.5 text-loss" />
-              <p className="text-xs text-muted-foreground">Total Debits</p>
+              <p className="text-xs text-muted-foreground">Total Deployed</p>
             </div>
-            <p className="text-xl font-bold text-loss">{formatCurrency(totalDebits)}</p>
+            <p className="text-xl font-bold text-foreground">{formatCurrency(totalDeployed)}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">incl. ₦{totalFees.toLocaleString("en-NG", { minimumFractionDigits: 2 })} fees</p>
+          </div>
+          <div className="bg-card border border-border rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-1">
+              <TrendingUp className="w-3.5 h-3.5 text-gain" />
+              <p className="text-xs text-muted-foreground">Income (Div + Int)</p>
+            </div>
+            <p className="text-xl font-bold text-gain">{formatCurrency(totalIncome)}</p>
+          </div>
+          <div className="bg-card border border-border rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-1">
+              <ArrowUpRight className="w-3.5 h-3.5 text-muted-foreground" />
+              <p className="text-xs text-muted-foreground">Cash Balance</p>
+            </div>
+            <p className={`text-xl font-bold ${finalBalance >= 0 ? "text-foreground" : "text-loss"}`}>
+              {formatCurrency(finalBalance)}
+            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">excl. equity portfolio</p>
           </div>
         </div>
 
-        {/* ── Action bar ────────────────────────────────────── */}
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-sm text-muted-foreground">
-            {unmatched.length > 0
-              ? `${unmatched.length} entr${unmatched.length === 1 ? "y" : "ies"} need attribution`
-              : "All entries are matched"}
-          </p>
-          {isAdmin && <AddBankStatementEntry />}
-        </div>
-
-        {/* ── Unmatched entries ─────────────────────────────── */}
-        {unmatched.length > 0 && (
-          <div className="bg-card border border-amber-200 dark:border-amber-700/30 rounded-xl overflow-hidden">
-            <div className="px-5 py-4 border-b border-amber-200 dark:border-amber-700/30 flex items-center gap-2 bg-amber-50/50 dark:bg-amber-900/10">
-              <AlertTriangle className="w-4 h-4 text-amber-500" />
-              <h3 className="font-semibold text-foreground">Unmatched — Needs Attribution ({unmatched.length})</h3>
-            </div>
-            {!isAdmin && (
-              <div className="px-5 py-3 text-sm text-amber-700 bg-amber-50/50 border-b border-amber-100">
-                Admin access required to attribute entries.
-              </div>
-            )}
-            <div className="divide-y divide-border">
-              {unmatched.map(txn => (
-                <div key={txn.id} className="flex items-start justify-between gap-4 px-5 py-4 hover:bg-muted/20 transition-colors">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
-                      <span className="text-xs text-muted-foreground whitespace-nowrap">
-                        {new Date(txn.txn_date).toLocaleDateString("en-NG", { day: "2-digit", month: "short", year: "numeric" })}
-                      </span>
-                      <p className="text-sm font-medium text-foreground">{txn.description}</p>
-                    </div>
-                    {txn.notes && <p className="text-xs text-muted-foreground mt-0.5">{txn.notes}</p>}
-                    {txn.bank_reference && <p className="text-xs text-muted-foreground mt-0.5">Ref: {txn.bank_reference}</p>}
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    {txn.credit != null && (
-                      <p className="font-bold text-sm text-gain">+₦{txn.credit.toLocaleString("en-NG")}</p>
-                    )}
-                    {txn.debit != null && (
-                      <p className="font-bold text-sm text-loss">−₦{txn.debit.toLocaleString("en-NG")}</p>
-                    )}
-                    {isAdmin && <EditBankEntryButton entry={txn} />}
-                    {isAdmin && (
-                      <AttributeEntryButton entry={txn} members={members} categories={categories} />
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {unmatched.length === 0 && (
-          <div className="bg-card border border-border rounded-xl p-10 text-center">
-            <CheckCircle2 className="w-10 h-10 text-gain mx-auto mb-3" />
-            <p className="font-medium text-foreground">Fully reconciled</p>
-            <p className="text-sm text-muted-foreground mt-1">Every bank statement entry has been matched.</p>
-          </div>
-        )}
-
-        {/* ── Cash Statement ────────────────────────────────── */}
+        {/* ── Ledger table ─────────────────────────────────────── */}
         <div className="bg-card border border-border rounded-xl overflow-hidden">
           <div className="px-5 py-4 border-b border-border flex items-center gap-2">
-            <BarChart3 className="w-4 h-4 text-primary" />
-            <h3 className="font-semibold text-foreground">Cash Statement</h3>
-            <span className="text-xs text-muted-foreground ml-1">— categorised breakdown of all bank movements</span>
+            <BookOpen className="w-4 h-4 text-primary" />
+            <h3 className="font-semibold text-foreground">Transaction Ledger</h3>
+            <span className="text-xs text-muted-foreground ml-1">
+              — {entries.length} entries · chronological order
+            </span>
           </div>
-          <div className="grid md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-border">
-
-            {/* Credits */}
-            <div>
-              <div className="px-4 py-3 bg-gain/5 border-b border-border flex items-center gap-2">
-                <ArrowUpRight className="w-3.5 h-3.5 text-gain" />
-                <p className="text-xs font-semibold text-gain uppercase tracking-wide">Inflows (Credits)</p>
-              </div>
-              <table className="w-full text-sm">
-                <thead className="bg-muted/20 border-b border-border">
-                  <tr>
-                    <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Category</th>
-                    <th className="text-center px-3 py-2 text-xs font-medium text-muted-foreground">Entries</th>
-                    <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground">Amount (₦)</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {creditLines.length === 0 ? (
-                    <tr><td colSpan={3} className="px-4 py-4 text-center text-xs text-muted-foreground">No credit entries</td></tr>
-                  ) : creditLines.map(g => (
-                    <tr key={g.label} className={g.isUnmatched ? "bg-amber-50/30 dark:bg-amber-900/5" : "hover:bg-muted/10"}>
-                      <td className="px-4 py-2.5 text-sm text-foreground">
-                        {g.label}
-                        {g.isUnmatched && (
-                          <AlertTriangle className="inline w-3 h-3 text-amber-500 ml-1.5 -mt-0.5" />
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/30 border-b border-border">
+                <tr>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground whitespace-nowrap">Date</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Description</th>
+                  <th className="text-center px-3 py-3 text-xs font-medium text-muted-foreground whitespace-nowrap">Type</th>
+                  <th className="hidden lg:table-cell text-right px-3 py-3 text-xs font-medium text-muted-foreground whitespace-nowrap">Units</th>
+                  <th className="hidden lg:table-cell text-right px-3 py-3 text-xs font-medium text-muted-foreground whitespace-nowrap">Price (₦)</th>
+                  <th className="hidden md:table-cell text-right px-3 py-3 text-xs font-medium text-muted-foreground whitespace-nowrap">Fees (₦)</th>
+                  <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground whitespace-nowrap">Debit (₦)</th>
+                  <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground whitespace-nowrap">Credit (₦)</th>
+                  <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground whitespace-nowrap">Balance (₦)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {entries.map(e => {
+                  const badge = TYPE_BADGE[e.type_key] ?? "bg-muted text-muted-foreground";
+                  const hasFeeDetail = e.fee_brokerage || e.fee_sec || e.fee_cscs || e.fee_stamp;
+                  return (
+                    <tr key={e.id} className="hover:bg-muted/20 transition-colors">
+                      <td className="px-4 py-2.5 text-xs text-muted-foreground whitespace-nowrap align-top">
+                        {fmtDate(e.date)}
+                      </td>
+                      <td className="px-4 py-2.5 align-top max-w-[280px]">
+                        <p className="text-xs font-medium text-foreground">{e.description}</p>
+                        {e.notes && (
+                          <p className="text-xs text-muted-foreground mt-0.5 truncate" title={e.notes}>
+                            {e.notes}
+                          </p>
+                        )}
+                        {e.reference && (
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            Ref: {e.reference}
+                          </p>
+                        )}
+                        {hasFeeDetail && (
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {[
+                              e.fee_brokerage ? `Brok. ₦${e.fee_brokerage.toLocaleString("en-NG", { minimumFractionDigits: 2 })}` : null,
+                              e.fee_sec       ? `SEC ₦${e.fee_sec.toLocaleString("en-NG", { minimumFractionDigits: 2 })}`           : null,
+                              e.fee_cscs      ? `CSCS ₦${e.fee_cscs.toLocaleString("en-NG", { minimumFractionDigits: 2 })}`         : null,
+                              e.fee_stamp     ? `Stamp ₦${e.fee_stamp.toLocaleString("en-NG", { minimumFractionDigits: 2 })}`       : null,
+                            ].filter(Boolean).join(" · ")}
+                          </p>
                         )}
                       </td>
-                      <td className="px-3 py-2.5 text-center text-xs text-muted-foreground">{g.count}</td>
-                      <td className="px-4 py-2.5 text-right font-mono text-xs text-gain tabular-nums">
-                        {g.total.toLocaleString("en-NG", { minimumFractionDigits: 2 })}
+                      <td className="px-3 py-2.5 text-center align-top">
+                        <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${badge}`}>
+                          {e.type_label}
+                        </span>
+                      </td>
+                      <td className="hidden lg:table-cell px-3 py-2.5 text-right text-xs font-mono text-foreground tabular-nums align-top">
+                        {e.units != null ? e.units.toLocaleString("en-NG") : "—"}
+                      </td>
+                      <td className="hidden lg:table-cell px-3 py-2.5 text-right text-xs font-mono text-foreground tabular-nums align-top">
+                        {e.price != null ? e.price.toLocaleString("en-NG", { minimumFractionDigits: 2 }) : "—"}
+                      </td>
+                      <td className="hidden md:table-cell px-3 py-2.5 text-right text-xs font-mono text-muted-foreground tabular-nums align-top">
+                        {e.fees != null && e.fees > 0
+                          ? e.fees.toLocaleString("en-NG", { minimumFractionDigits: 2 })
+                          : "—"}
+                      </td>
+                      <td className="px-4 py-2.5 text-right text-xs font-mono text-loss tabular-nums align-top">
+                        {e.debit != null
+                          ? e.debit.toLocaleString("en-NG", { minimumFractionDigits: 2 })
+                          : ""}
+                      </td>
+                      <td className="px-4 py-2.5 text-right text-xs font-mono text-gain tabular-nums align-top">
+                        {e.credit != null
+                          ? e.credit.toLocaleString("en-NG", { minimumFractionDigits: 2 })
+                          : ""}
+                      </td>
+                      <td className={`px-4 py-2.5 text-right text-xs font-mono font-semibold tabular-nums whitespace-nowrap align-top ${e.balance >= 0 ? "text-foreground" : "text-loss"}`}>
+                        {e.balance.toLocaleString("en-NG", { minimumFractionDigits: 2 })}
                       </td>
                     </tr>
-                  ))}
-                </tbody>
-                <tfoot className="border-t-2 border-border bg-muted/20">
-                  <tr>
-                    <td colSpan={2} className="px-4 py-3 text-xs font-semibold text-muted-foreground">
-                      Total Credits ({creditLines.reduce((s, g) => s + g.count, 0)})
-                    </td>
-                    <td className="px-4 py-3 text-right font-bold text-gain text-xs tabular-nums">
-                      {totalCredits.toLocaleString("en-NG", { minimumFractionDigits: 2 })}
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-
-            {/* Debits */}
-            <div>
-              <div className="px-4 py-3 bg-loss/5 border-b border-border flex items-center gap-2">
-                <ArrowDownRight className="w-3.5 h-3.5 text-loss" />
-                <p className="text-xs font-semibold text-loss uppercase tracking-wide">Outflows (Debits)</p>
-              </div>
-              <table className="w-full text-sm">
-                <thead className="bg-muted/20 border-b border-border">
-                  <tr>
-                    <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Category</th>
-                    <th className="text-center px-3 py-2 text-xs font-medium text-muted-foreground">Entries</th>
-                    <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground">Amount (₦)</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {debitLines.length === 0 ? (
-                    <tr><td colSpan={3} className="px-4 py-4 text-center text-xs text-muted-foreground">No debit entries</td></tr>
-                  ) : debitLines.map(g => (
-                    <tr key={g.label} className={g.isUnmatched ? "bg-amber-50/30 dark:bg-amber-900/5" : "hover:bg-muted/10"}>
-                      <td className="px-4 py-2.5 text-sm text-foreground">
-                        {g.label}
-                        {g.isUnmatched && (
-                          <AlertTriangle className="inline w-3 h-3 text-amber-500 ml-1.5 -mt-0.5" />
-                        )}
-                      </td>
-                      <td className="px-3 py-2.5 text-center text-xs text-muted-foreground">{g.count}</td>
-                      <td className="px-4 py-2.5 text-right font-mono text-xs text-loss tabular-nums">
-                        {g.total.toLocaleString("en-NG", { minimumFractionDigits: 2 })}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot className="border-t-2 border-border bg-muted/20">
-                  <tr>
-                    <td colSpan={2} className="px-4 py-3 text-xs font-semibold text-muted-foreground">
-                      Total Debits ({debitLines.reduce((s, g) => s + g.count, 0)})
-                    </td>
-                    <td className="px-4 py-3 text-right font-bold text-loss text-xs tabular-nums">
-                      {totalDebits.toLocaleString("en-NG", { minimumFractionDigits: 2 })}
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          </div>
-
-          {/* Net position */}
-          <div className="px-5 py-3 border-t border-border bg-muted/10 flex items-center justify-between">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Net Cash Position</p>
-            <p className={`font-bold tabular-nums ${totalCredits - totalDebits >= 0 ? "text-gain" : "text-loss"}`}>
-              {formatCurrency(totalCredits - totalDebits)}
-            </p>
+                  );
+                })}
+              </tbody>
+              <tfoot className="border-t-2 border-border bg-muted/20">
+                <tr>
+                  <td colSpan={6} className="px-4 py-3 text-xs font-semibold text-muted-foreground">
+                    Totals ({entries.length} entries)
+                  </td>
+                  <td className="px-4 py-3 text-right font-bold text-loss text-xs tabular-nums">
+                    {totalDebit.toLocaleString("en-NG", { minimumFractionDigits: 2 })}
+                  </td>
+                  <td className="px-4 py-3 text-right font-bold text-gain text-xs tabular-nums">
+                    {totalCredit.toLocaleString("en-NG", { minimumFractionDigits: 2 })}
+                  </td>
+                  <td className={`px-4 py-3 text-right font-bold text-xs tabular-nums ${finalBalance >= 0 ? "text-foreground" : "text-loss"}`}>
+                    {finalBalance.toLocaleString("en-NG", { minimumFractionDigits: 2 })}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
           </div>
         </div>
-
-        {/* ── Full Statement ────────────────────────────────── */}
-        {allTxns.length > 0 && (
-          <div className="bg-card border border-border rounded-xl overflow-hidden">
-            <div className="px-5 py-4 border-b border-border">
-              <h3 className="font-semibold text-foreground">Full Statement ({allTxns.length} entries)</h3>
-              <p className="text-xs text-muted-foreground mt-0.5">All bank entries with their reconciliation status</p>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/30 border-b border-border">
-                  <tr>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground whitespace-nowrap">Date</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Description</th>
-                    <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground">Debit (₦)</th>
-                    <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground">Credit (₦)</th>
-                    <th className="text-center px-4 py-3 text-xs font-medium text-muted-foreground">Attribution</th>
-                    {isAdmin && <th className="px-3 py-3"></th>}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {allTxns.map(txn => {
-                    const label = getStatusLabel(txn);
-                    return (
-                      <tr
-                        key={txn.id}
-                        className={`hover:bg-muted/20 transition-colors ${txn.status === "unmatched" ? "bg-amber-50/30 dark:bg-amber-900/5" : ""}`}
-                      >
-                        <td className="px-4 py-2.5 text-xs text-muted-foreground whitespace-nowrap">
-                          {new Date(txn.txn_date).toLocaleDateString("en-NG", { day: "2-digit", month: "short", year: "numeric" })}
-                        </td>
-                        <td className="px-4 py-2.5 max-w-xs">
-                          <p className="text-foreground truncate">{txn.description}</p>
-                          {txn.bank_reference && (
-                            <p className="text-xs text-muted-foreground">{txn.bank_reference}</p>
-                          )}
-                        </td>
-                        <td className="px-4 py-2.5 text-right font-mono text-xs text-loss tabular-nums">
-                          {txn.debit != null ? txn.debit.toLocaleString("en-NG", { minimumFractionDigits: 2 }) : ""}
-                        </td>
-                        <td className="px-4 py-2.5 text-right font-mono text-xs text-gain tabular-nums">
-                          {txn.credit != null ? txn.credit.toLocaleString("en-NG", { minimumFractionDigits: 2 }) : ""}
-                        </td>
-                        <td className="px-4 py-2.5 text-center">
-                          {txn.status === "matched" && (
-                            <span className="text-xs px-2 py-0.5 rounded-full bg-gain/10 text-gain font-medium whitespace-nowrap">
-                              {label}
-                            </span>
-                          )}
-                          {txn.status === "unmatched" && (
-                            <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 font-medium">
-                              Unmatched
-                            </span>
-                          )}
-                          {txn.status === "ignored" && (
-                            <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
-                              Ignored
-                            </span>
-                          )}
-                        </td>
-                        {isAdmin && (
-                          <td className="px-3 py-2.5">
-                            <EditBankEntryButton entry={txn} />
-                          </td>
-                        )}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-                <tfoot className="border-t-2 border-border bg-muted/20">
-                  <tr>
-                    <td colSpan={2} className="px-4 py-3 text-xs font-semibold text-muted-foreground">
-                      Totals ({allTxns.length} entries)
-                    </td>
-                    <td className="px-4 py-3 text-right font-bold text-loss text-xs tabular-nums">
-                      {totalDebits.toLocaleString("en-NG", { minimumFractionDigits: 2 })}
-                    </td>
-                    <td className="px-4 py-3 text-right font-bold text-gain text-xs tabular-nums">
-                      {totalCredits.toLocaleString("en-NG", { minimumFractionDigits: 2 })}
-                    </td>
-                    <td className="px-4 py-3 text-center text-xs font-semibold text-foreground">
-                      Net: {formatCurrency(totalCredits - totalDebits)}
-                    </td>
-                    {isAdmin && <td />}
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          </div>
-        )}
-
       </div>
     </div>
   );

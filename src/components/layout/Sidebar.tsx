@@ -14,7 +14,7 @@ import {
   ChevronLeft,
   ChevronRight,
   LogOut,
-  AlertTriangle,
+  BookOpen,
   X,
 } from "lucide-react";
 import { useState } from "react";
@@ -27,7 +27,7 @@ const navItems = [
   { href: "/portfolio",               label: "Portfolio",       icon: BarChart3       },
   { href: "/contributions",           label: "Contributions",   icon: Wallet          },
   { href: "/transactions",            label: "Transactions",    icon: ArrowLeftRight  },
-  { href: "/transactions/unmatched",  label: "Unmatched",       icon: AlertTriangle   },
+  { href: "/transactions/unmatched",  label: "Ledger",          icon: BookOpen        },
   { href: "/members",                 label: "Members",         icon: Users           },
   { href: "/settings",                label: "Settings",        icon: Settings        },
 ];

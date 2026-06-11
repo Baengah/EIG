@@ -1,12 +1,13 @@
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { Header } from "@/components/layout/Header";
-import { formatCurrency, formatPercent, isPositive } from "@/lib/utils";
+import { formatCurrency, isPositive } from "@/lib/utils";
 import {
   TrendingUp, TrendingDown, Wallet, ArrowDownRight, ArrowUpRight,
   Landmark, Receipt, Building2,
 } from "lucide-react";
 import { RecordContributionButton } from "@/components/contributions/RecordContributionButton";
 import { AddBankEntryButton } from "@/components/contributions/AddBankEntryButton";
+import { ContributionsTable } from "@/components/contributions/ContributionsTable";
 
 export const revalidate = 60;
 
@@ -80,27 +81,18 @@ export default async function ContributionsPage() {
   const netPLPct      = netPLBase > 0 ? (netPL / netPLBase) * 100 : 0;
   const plPositive    = isPositive(netPL);
 
-  // ── Contributor P&L rows ───────────────────────────────────────
-  const plRows = Array.from(memberTotals.entries())
-    .map(([memberId, contributed]) => {
-      const sharePct    = totalContributions > 0 ? contributed / totalContributions : 0;
-      const attrPortfolio = sharePct * portfolioValue;
-      const attrGain    = sharePct * (summary?.total_unrealized_gain_loss ?? 0);
-      const gainPct     = contributed > 0 ? (attrGain / contributed) * 100 : 0;
-      return { memberId, member: memberMap.get(memberId), contributed, sharePct, attrPortfolio, attrGain, gainPct };
-    })
-    .sort((a, b) => b.contributed - a.contributed);
-
-  // ── Per-member payment history ─────────────────────────────────
-  const contribsByMember = new Map<string, typeof contribs[number][]>();
-  for (const c of contribs) {
-    const list = contribsByMember.get(c.member_id) ?? [];
-    list.push(c);
-    contribsByMember.set(c.member_id, list);
-  }
-  // Sort each member's payments oldest-first
-  contribsByMember.forEach((v, k) => {
-    contribsByMember.set(k, v.sort((a, b) => a.contribution_date.localeCompare(b.contribution_date)));
+  // ── Flat contribution rows for sortable table ──────────────────
+  const contributionRows = contribs.map(c => {
+    const m = memberMap.get(c.member_id);
+    return {
+      id: c.id,
+      date: c.contribution_date,
+      memberName: m?.full_name ?? "Unknown",
+      memberNumber: m?.member_number ?? "",
+      amount: Number(c.amount),
+      via: c.bank_reference ?? c.payment_method ?? null,
+      notes: c.notes ?? null,
+    };
   });
 
   // ── Unified account statement (oldest-first for balance, display newest-first) ──
@@ -261,113 +253,21 @@ export default async function ContributionsPage() {
           <RecordContributionButton members={members} />
         </div>
 
-        {/* ── Contributor breakdown ───────────────────────────── */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="font-semibold text-foreground">Contributor Breakdown</h3>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {plRows.length} contributor{plRows.length !== 1 ? "s" : ""} · ownership proportional to contributions
-              </p>
-            </div>
+        {/* ── Contribution schedule ────────────────────────────── */}
+        <div className="bg-card border border-border rounded-xl overflow-hidden">
+          <div className="px-4 sm:px-5 py-4 border-b border-border">
+            <h3 className="font-semibold text-foreground">Contribution Schedule</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {contributionRows.length} payment{contributionRows.length !== 1 ? "s" : ""} · click column headers to sort
+            </p>
           </div>
-
-          {plRows.length === 0 ? (
-            <div className="bg-card border border-border rounded-xl p-12 text-center">
+          {contributionRows.length === 0 ? (
+            <div className="p-12 text-center">
               <Wallet className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
               <p className="font-medium text-foreground">No contributions recorded yet</p>
             </div>
           ) : (
-            plRows.map(({ memberId, member, contributed, sharePct, attrPortfolio, attrGain, gainPct }) => {
-              const payments = contribsByMember.get(memberId) ?? [];
-              return (
-                <div key={memberId} className="bg-card border border-border rounded-xl overflow-hidden">
-                  {/* Card header */}
-                  <div className="px-4 sm:px-5 py-4 border-b border-border bg-muted/20">
-                    <div className="flex items-start justify-between gap-3 flex-wrap">
-                      <div>
-                        <p className="font-semibold text-foreground">{member?.full_name ?? "Unknown"}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {member?.member_number ?? ""} · {payments.length} payment{payments.length !== 1 ? "s" : ""}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-3 sm:gap-5 text-right text-sm flex-wrap">
-                        <div>
-                          <p className="text-xs text-muted-foreground">Contributed</p>
-                          <p className="font-bold text-foreground">{formatCurrency(contributed)}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-muted-foreground">Share</p>
-                          <p className="font-semibold text-foreground">{(sharePct * 100).toFixed(2)}%</p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-muted-foreground">Portfolio</p>
-                          <p className="font-semibold text-foreground">{formatCurrency(attrPortfolio)}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-muted-foreground">Gain</p>
-                          <p className={`font-semibold ${attrGain >= 0 ? "text-gain" : "text-loss"}`}>
-                            {attrGain >= 0 ? "+" : ""}{formatCurrency(attrGain)}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-muted-foreground">Return</p>
-                          <p className={`font-bold ${gainPct >= 0 ? "text-gain" : "text-loss"}`}>
-                            {formatPercent(gainPct)}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Payment detail table */}
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead className="bg-muted/10">
-                        <tr>
-                          <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground whitespace-nowrap">Date</th>
-                          <th className="text-right px-3 py-2.5 text-xs font-medium text-muted-foreground">Amount</th>
-                          <th className="hidden sm:table-cell text-left px-3 py-2.5 text-xs font-medium text-muted-foreground">Via</th>
-                          <th className="hidden md:table-cell text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Notes</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-border">
-                        {payments.map(p => (
-                          <tr key={p.id} className="hover:bg-muted/20 transition-colors">
-                            <td className="px-4 py-2.5 text-xs text-muted-foreground whitespace-nowrap">
-                              {new Date(p.contribution_date).toLocaleDateString("en-NG", { day: "2-digit", month: "short", year: "numeric" })}
-                            </td>
-                            <td className="px-3 py-2.5 text-right font-mono text-sm font-medium text-foreground tabular-nums">
-                              {formatCurrency(Number(p.amount))}
-                            </td>
-                            <td className="hidden sm:table-cell px-3 py-2.5 text-xs text-muted-foreground max-w-[180px] truncate">
-                              {p.bank_reference ?? p.payment_method ?? "—"}
-                            </td>
-                            <td className="hidden md:table-cell px-4 py-2.5 text-xs text-muted-foreground max-w-[240px] truncate">
-                              {p.notes ?? "—"}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      {payments.length > 1 && (
-                        <tfoot className="bg-muted/10 border-t border-border">
-                          <tr>
-                            <td className="px-4 py-2.5 text-xs font-semibold text-muted-foreground">
-                              Total ({payments.length} payments)
-                            </td>
-                            <td className="px-3 py-2.5 text-right font-bold text-foreground text-sm tabular-nums font-mono">
-                              {formatCurrency(contributed)}
-                            </td>
-                            <td className="hidden sm:table-cell" />
-                            <td className="hidden md:table-cell" />
-                          </tr>
-                        </tfoot>
-                      )}
-                    </table>
-                  </div>
-                </div>
-              );
-            })
+            <ContributionsTable rows={contributionRows} />
           )}
         </div>
 

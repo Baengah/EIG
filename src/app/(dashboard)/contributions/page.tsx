@@ -99,9 +99,9 @@ export default async function ContributionsPage() {
     contribsByMember.set(c.member_id, list);
   }
   // Sort each member's payments oldest-first
-  for (const [k, v] of contribsByMember) {
+  contribsByMember.forEach((v, k) => {
     contribsByMember.set(k, v.sort((a, b) => a.contribution_date.localeCompare(b.contribution_date)));
-  }
+  });
 
   // ── Unified account statement (oldest-first for balance, display newest-first) ──
   type StatementEntry = {

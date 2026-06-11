@@ -54,13 +54,17 @@ export default function AcceptInvitePage() {
       if (updateErr) throw updateErr;
       if (!user) throw new Error("Session lost — please request a new invite.");
 
-      // 2. Create the profile record
+      // 2. Create the profile record — honour role set at invite time
+      const validRoles = ["admin", "member", "viewer"] as const;
+      type ProfileRole = typeof validRoles[number];
+      const rawRole = user.user_metadata?.role as string | undefined;
+      const invitedRole: ProfileRole = validRoles.includes(rawRole as ProfileRole) ? rawRole as ProfileRole : "member";
       const { error: profileErr } = await supabase.from("profiles").upsert({
         id: user.id,
         full_name: fullName.trim(),
         email: user.email!,
         phone: phone.trim() || null,
-        role: "member",
+        role: invitedRole,
       });
       if (profileErr) throw profileErr;
 

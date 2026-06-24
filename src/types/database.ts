@@ -348,6 +348,8 @@ export type Database = {
           price_change: number | null;
           change_percent: number | null;
           scrape_source: string;
+          is_stale: boolean;
+          fetched_at: string | null;
           created_at: string;
         };
         Insert: {
@@ -364,6 +366,8 @@ export type Database = {
           price_change?: number | null;
           change_percent?: number | null;
           scrape_source: string;
+          is_stale?: boolean;
+          fetched_at?: string | null;
         };
         Update: {
           id?: string;
@@ -379,6 +383,8 @@ export type Database = {
           price_change?: number | null;
           change_percent?: number | null;
           scrape_source?: string;
+          is_stale?: boolean;
+          fetched_at?: string | null;
         };
         Relationships: [];
       };

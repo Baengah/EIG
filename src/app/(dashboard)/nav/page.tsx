@@ -20,11 +20,7 @@ export default async function NavPage() {
   const [navHistoryRes, fundValuationsRes] = await Promise.all([
     supabase
       .from("fund_nav")
-      .select(
-        "id, nav_date, nav_per_unit, total_fund_value, units_in_issue, " +
-        "stock_equity_value, mmf_value, paramount_value, " +
-        "cash_at_bank, cash_at_broker, liabilities, source"
-      )
+      .select("id, nav_date, nav_per_unit, total_fund_value, units_in_issue, stock_equity_value, mmf_value, paramount_value, cash_at_bank, cash_at_broker, liabilities, source")
       .order("nav_date", { ascending: false })
       .limit(180),
     supabase

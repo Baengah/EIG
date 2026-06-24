@@ -16,6 +16,8 @@ import {
   LogOut,
   BookOpen,
   X,
+  Coins,
+  Layers,
 } from "lucide-react";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
@@ -25,6 +27,8 @@ import { useSidebar } from "./SidebarContext";
 const navItems = [
   { href: "/",                        label: "Dashboard",       icon: LayoutDashboard },
   { href: "/portfolio",               label: "Portfolio",       icon: BarChart3       },
+  { href: "/nav",                     label: "NAV",             icon: Layers          },
+  { href: "/units",                   label: "Units",           icon: Coins           },
   { href: "/contributions",           label: "Contributions",   icon: Wallet          },
   { href: "/transactions",            label: "Transactions",    icon: ArrowLeftRight  },
   { href: "/transactions/unmatched",  label: "Ledger",          icon: BookOpen        },

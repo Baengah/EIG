@@ -13,7 +13,7 @@ export const revalidate = 300; // Revalidate every 5 minutes
 async function getDashboardData() {
   const supabase = await createClient();
 
-  const [summary, snapshot, periodRes, recentTxns, topHoldings, activeMembersCount, contribSumRes] = await Promise.all([
+  const [summary, snapshot, periodRes, recentTxns, topHoldings, activeMembersCount, contribSumRes, navRes] = await Promise.all([
     supabase.from("v_portfolio_summary").select("*").single(),
     supabase
       .from("portfolio_snapshots")
@@ -42,6 +42,11 @@ async function getDashboardData() {
       .select("id", { count: "exact" })
       .eq("is_active", true),
     supabase.from("member_contributions").select("amount"),
+    supabase
+      .from("fund_nav")
+      .select("nav_per_unit, nav_date, source")
+      .order("nav_date", { ascending: false })
+      .limit(30),
   ]);
 
   // Fetch contribution counts for the latest period
@@ -79,6 +84,16 @@ async function getDashboardData() {
 
   const totalMemberContributions = (contribSumRes.data ?? []).reduce((sum, r) => sum + (r.amount ?? 0), 0);
 
+  const navHistory = navRes.data ?? [];
+  const navLatest = navHistory[0] ?? null;
+  const navBaseline = navHistory.find((r) => r.source === "baseline") ?? null;
+  const navChange = navLatest && navBaseline
+    ? Number(navLatest.nav_per_unit) - Number(navBaseline.nav_per_unit)
+    : null;
+  const navChangePct = navBaseline && navChange !== null
+    ? (navChange / Number(navBaseline.nav_per_unit)) * 100
+    : null;
+
   return {
     summary: summary.data,
     snapshots: snapshot.data ?? [],
@@ -89,11 +104,13 @@ async function getDashboardData() {
     topHoldings: topHoldings.data ?? [],
     memberCount: activeMembersCount.count ?? 0,
     totalMemberContributions,
+    navLatest,
+    navChangePct,
   };
 }
 
 export default async function DashboardPage() {
-  const { summary, snapshots, latestPeriod, totalContribs, paidContribs, recentTxns, topHoldings, memberCount, totalMemberContributions } = await getDashboardData();
+  const { summary, snapshots, latestPeriod, totalContribs, paidContribs, recentTxns, topHoldings, memberCount, totalMemberContributions, navLatest, navChangePct } = await getDashboardData();
 
   const portfolioValue = summary?.total_value ?? 0;
   const totalCost = summary?.total_cost ?? 0;
@@ -137,13 +154,13 @@ export default async function DashboardPage() {
       iconColor: "text-emerald-600",
     },
     {
-      title: "Monthly Contribution",
-      value: latestPeriod ? formatCurrency(latestPeriod.amount_per_member) : "—",
-      change: null,
-      subtext: latestPeriod
-        ? `Due ${new Date(latestPeriod.due_date).toLocaleDateString("en-NG", { day: "2-digit", month: "short" })}`
-        : "No period set",
-      positive: true,
+      title: "NAV per Unit",
+      value: navLatest ? `₦${Number(navLatest.nav_per_unit).toFixed(4)}` : "—",
+      change: navChangePct !== null ? formatPercent(Math.abs(navChangePct)) : null,
+      subtext: navLatest
+        ? `as at ${new Date(navLatest.nav_date).toLocaleDateString("en-NG", { day: "2-digit", month: "short" })}`
+        : "No NAV computed yet",
+      positive: navChangePct === null || navChangePct >= 0,
       icon: Wallet,
       color: "bg-gold-50 dark:bg-amber-950",
       iconColor: "text-gold-600",

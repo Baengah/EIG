@@ -9,7 +9,7 @@ export const revalidate = 300;
 export default async function PortfolioPage() {
   const supabase = await createClient();
 
-  const [holdingsRes, summaryRes, membersRes, contribsRes] = await Promise.all([
+  const [holdingsRes, summaryRes, membersRes, contribsRes, dividendYieldsRes, portfolioYieldRes] = await Promise.all([
     supabase
       .from("v_holdings_with_value")
       .select("*")
@@ -17,12 +17,21 @@ export default async function PortfolioPage() {
     supabase.from("v_portfolio_summary").select("*").single(),
     supabase.from("members").select("id, full_name, member_number").eq("is_active", true).order("full_name"),
     supabase.from("member_contributions").select("member_id, amount"),
+    supabase.from("v_dividend_yield").select("ticker, yield_pct, forward_yield_pct, ttm_dps, annual_income"),
+    supabase.from("v_portfolio_dividend_yield").select("*").single(),
   ]);
 
   const holdings = holdingsRes.data ?? [];
   const summary = summaryRes.data;
   const members = membersRes.data ?? [];
   const contribs = contribsRes.data ?? [];
+  const dividendYields = Object.fromEntries(
+    (dividendYieldsRes.data ?? []).map((d) => [
+      d.ticker,
+      { yield_pct: Number(d.yield_pct), forward_yield_pct: Number(d.forward_yield_pct) },
+    ])
+  );
+  const portfolioYield = portfolioYieldRes.data;
 
   const stocks = holdings.filter((h) => h.asset_type === "stock");
   const funds = holdings.filter((h) => h.asset_type === "mutual_fund");
@@ -82,7 +91,7 @@ export default async function PortfolioPage() {
       <div className="p-4 sm:p-6 space-y-6">
 
         {/* Summary banner */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-4">
           <div className="bg-card border border-border rounded-xl p-4">
             <p className="text-xs text-muted-foreground mb-1">Total Value</p>
             <p className="text-2xl font-bold text-foreground">{formatCurrency(totalValue)}</p>
@@ -103,6 +112,13 @@ export default async function PortfolioPage() {
               {positive ? <TrendingUp className="w-5 h-5" /> : <TrendingDown className="w-5 h-5" />}
               <p className="text-2xl font-bold">{formatPercent(gainLossPct)}</p>
             </div>
+          </div>
+          <div className="bg-card border border-border rounded-xl p-4">
+            <p className="text-xs text-muted-foreground mb-1">Portfolio Yield</p>
+            <p className="text-2xl font-bold text-foreground">
+              {portfolioYield ? `${Number(portfolioYield.portfolio_yield_pct).toFixed(2)}%` : "—"}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">TTM dividend yield</p>
           </div>
         </div>
 
@@ -194,7 +210,7 @@ export default async function PortfolioPage() {
                   <h3 className="font-semibold text-foreground">NGX Stocks</h3>
                   <span className="text-xs text-muted-foreground ml-auto">{stocks.length} positions</span>
                 </div>
-                <HoldingsTable holdings={stocks} totalValue={totalValue} />
+                <HoldingsTable holdings={stocks} totalValue={totalValue} dividendYields={dividendYields} />
               </div>
             )}
 
@@ -226,7 +242,16 @@ export default async function PortfolioPage() {
   );
 }
 
-function HoldingsTable({ holdings, totalValue }: { holdings: { id: string; ticker?: string | null; fund_name?: string | null; company_name?: string | null; fund_type?: string | null; sector?: string | null; quantity: number; average_cost: number; total_cost: number; current_price?: number | null; current_value: number; unrealized_gain_loss: number; gain_loss_percent: number; price_date?: string | null }[]; totalValue: number }) {
+function HoldingsTable({
+  holdings,
+  totalValue,
+  dividendYields = {},
+}: {
+  holdings: { id: string; ticker?: string | null; fund_name?: string | null; company_name?: string | null; fund_type?: string | null; sector?: string | null; quantity: number; average_cost: number; total_cost: number; current_price?: number | null; current_value: number; unrealized_gain_loss: number; gain_loss_percent: number; price_date?: string | null }[];
+  totalValue: number;
+  dividendYields?: Record<string, { yield_pct: number; forward_yield_pct: number }>;
+}) {
+  const showYield = Object.keys(dividendYields).length > 0;
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
@@ -238,6 +263,9 @@ function HoldingsTable({ holdings, totalValue }: { holdings: { id: string; ticke
             <th className="hidden sm:table-cell text-right px-3 py-2.5 text-xs font-medium text-muted-foreground">Price</th>
             <th className="text-right px-3 py-2.5 text-xs font-medium text-muted-foreground">Value</th>
             <th className="text-right px-3 py-2.5 text-xs font-medium text-muted-foreground">Gain/Loss</th>
+            {showYield && (
+              <th className="hidden lg:table-cell text-right px-3 py-2.5 text-xs font-medium text-muted-foreground">Div. Yield</th>
+            )}
             <th className="hidden md:table-cell text-right px-4 py-2.5 text-xs font-medium text-muted-foreground">Weight</th>
           </tr>
         </thead>
@@ -245,6 +273,7 @@ function HoldingsTable({ holdings, totalValue }: { holdings: { id: string; ticke
           {holdings.map((h) => {
             const positive = isPositive(h.unrealized_gain_loss);
             const weight = totalValue > 0 ? ((h.current_value ?? 0) / totalValue) * 100 : 0;
+            const dyInfo = h.ticker ? dividendYields[h.ticker] : undefined;
             return (
               <tr key={h.id} className="hover:bg-muted/20 transition-colors">
                 <td className="px-4 py-3">
@@ -272,6 +301,20 @@ function HoldingsTable({ holdings, totalValue }: { holdings: { id: string; ticke
                     {formatPercent(h.gain_loss_percent)}
                   </p>
                 </td>
+                {showYield && (
+                  <td className="hidden lg:table-cell px-3 py-3 text-right">
+                    {dyInfo && dyInfo.yield_pct > 0 ? (
+                      <>
+                        <p className="text-sm font-medium text-foreground">{dyInfo.yield_pct.toFixed(2)}%</p>
+                        {dyInfo.forward_yield_pct > 0 && dyInfo.forward_yield_pct !== dyInfo.yield_pct && (
+                          <p className="text-xs text-muted-foreground">{dyInfo.forward_yield_pct.toFixed(2)}% fwd</p>
+                        )}
+                      </>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
+                  </td>
+                )}
                 <td className="hidden md:table-cell px-4 py-3 text-right text-muted-foreground text-sm">{weight.toFixed(1)}%</td>
               </tr>
             );

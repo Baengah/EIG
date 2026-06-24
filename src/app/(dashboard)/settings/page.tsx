@@ -3,6 +3,7 @@ import { Header } from "@/components/layout/Header";
 import { BrokerAccountForm } from "@/components/settings/BrokerAccountForm";
 import { BrokerCashButton } from "@/components/settings/BrokerCashButton";
 import { BankAccountForm } from "@/components/settings/BankAccountForm";
+import { BankCashButton } from "@/components/settings/BankCashButton";
 import { TriggerScrapeButton } from "@/components/settings/TriggerScrapeButton";
 import { InviteUserButton } from "@/components/settings/InviteUserButton";
 import { EditCategoryButton } from "@/components/settings/EditCategoryButton";
@@ -80,14 +81,25 @@ export default async function SettingsPage() {
             <h3 className="font-semibold text-foreground">Group Bank Accounts</h3>
           </div>
           {banks.map((b) => (
-            <div key={b.id} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg mb-2 text-sm">
-              <div>
+            <div key={b.id} className="flex items-start justify-between p-3 bg-muted/30 rounded-lg mb-2 text-sm gap-3">
+              <div className="min-w-0">
                 <p className="font-medium text-foreground">{b.bank_name}</p>
-                <p className="text-xs text-muted-foreground">{b.account_name} · {b.account_number}</p>
+                <p className="text-xs text-muted-foreground truncate">{b.account_name} · {b.account_number}</p>
               </div>
-              <span className={`text-xs px-2 py-0.5 rounded-full ${b.is_primary ? "bg-gold-50 text-gold-600" : "bg-muted text-muted-foreground"}`}>
-                {b.is_primary ? "Primary" : "Secondary"}
-              </span>
+              <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                <div className="text-right">
+                  <p className="text-xs text-muted-foreground">Cash at bank</p>
+                  <p className="font-semibold text-foreground">{formatCurrency(b.cash_balance ?? 0)}</p>
+                </div>
+                <BankCashButton
+                  bankId={b.id}
+                  bankName={b.bank_name}
+                  currentBalance={b.cash_balance ?? 0}
+                />
+                <span className={`text-xs px-2 py-0.5 rounded-full ${b.is_primary ? "bg-gold-50 text-gold-600" : "bg-muted text-muted-foreground"}`}>
+                  {b.is_primary ? "Primary" : "Secondary"}
+                </span>
+              </div>
             </div>
           ))}
           <div className="mt-3">

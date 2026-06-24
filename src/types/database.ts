@@ -446,6 +446,7 @@ export type Database = {
           sort_code: string | null;
           is_active: boolean;
           is_primary: boolean;
+          cash_balance: number;
           created_at: string;
         };
         Insert: {
@@ -458,6 +459,7 @@ export type Database = {
           sort_code?: string | null;
           is_active?: boolean;
           is_primary?: boolean;
+          cash_balance?: number;
         };
         Update: {
           id?: string;
@@ -469,6 +471,176 @@ export type Database = {
           sort_code?: string | null;
           is_active?: boolean;
           is_primary?: boolean;
+          cash_balance?: number;
+        };
+        Relationships: [];
+      };
+      ngx_holidays: {
+        Row: {
+          holiday_date: string;
+          description: string | null;
+        };
+        Insert: {
+          holiday_date: string;
+          description?: string | null;
+        };
+        Update: {
+          holiday_date?: string;
+          description?: string | null;
+        };
+        Relationships: [];
+      };
+      mutual_fund_valuations: {
+        Row: {
+          id: string;
+          fund_name: string;
+          valuation_date: string;
+          value: number;
+          source: string;
+          notes: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          fund_name: string;
+          valuation_date: string;
+          value: number;
+          source?: string;
+          notes?: string | null;
+        };
+        Update: {
+          id?: string;
+          fund_name?: string;
+          valuation_date?: string;
+          value?: number;
+          source?: string;
+          notes?: string | null;
+        };
+        Relationships: [];
+      };
+      fund_nav: {
+        Row: {
+          id: string;
+          nav_date: string;
+          total_fund_value: number;
+          units_in_issue: number;
+          nav_per_unit: number;
+          stock_equity_value: number;
+          mmf_value: number;
+          paramount_value: number;
+          cash_at_bank: number;
+          cash_at_broker: number;
+          liabilities: number;
+          source: "baseline" | "calculated" | "manual";
+          notes: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          nav_date: string;
+          total_fund_value: number;
+          units_in_issue: number;
+          nav_per_unit: number;
+          stock_equity_value?: number;
+          mmf_value?: number;
+          paramount_value?: number;
+          cash_at_bank?: number;
+          cash_at_broker?: number;
+          liabilities?: number;
+          source?: "baseline" | "calculated" | "manual";
+          notes?: string | null;
+        };
+        Update: {
+          id?: string;
+          nav_date?: string;
+          total_fund_value?: number;
+          units_in_issue?: number;
+          nav_per_unit?: number;
+          stock_equity_value?: number;
+          mmf_value?: number;
+          paramount_value?: number;
+          cash_at_bank?: number;
+          cash_at_broker?: number;
+          liabilities?: number;
+          source?: "baseline" | "calculated" | "manual";
+          notes?: string | null;
+        };
+        Relationships: [];
+      };
+      unit_transactions: {
+        Row: {
+          id: string;
+          txn_date: string;
+          member_id: string;
+          txn_type: "baseline" | "issue" | "redeem";
+          cash_amount: number;
+          nav_per_unit: number;
+          units: number;
+          running_balance: number;
+          source_id: string | null;
+          notes: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          txn_date: string;
+          member_id: string;
+          txn_type: "baseline" | "issue" | "redeem";
+          cash_amount: number;
+          nav_per_unit: number;
+          units: number;
+          running_balance: number;
+          source_id?: string | null;
+          notes?: string | null;
+        };
+        Update: {
+          id?: string;
+          txn_date?: string;
+          member_id?: string;
+          txn_type?: "baseline" | "issue" | "redeem";
+          cash_amount?: number;
+          nav_per_unit?: number;
+          units?: number;
+          running_balance?: number;
+          source_id?: string | null;
+          notes?: string | null;
+        };
+        Relationships: [];
+      };
+      equity_dividends: {
+        Row: {
+          id: string;
+          stock_id: string;
+          announcement_date: string | null;
+          ex_date: string;
+          pay_date: string | null;
+          dividend_per_share: number;
+          currency: string;
+          source: "manual" | "ngx" | "itick" | "afx";
+          notes: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          stock_id: string;
+          announcement_date?: string | null;
+          ex_date: string;
+          pay_date?: string | null;
+          dividend_per_share: number;
+          currency?: string;
+          source?: "manual" | "ngx" | "itick" | "afx";
+          notes?: string | null;
+        };
+        Update: {
+          id?: string;
+          stock_id?: string;
+          announcement_date?: string | null;
+          ex_date?: string;
+          pay_date?: string | null;
+          dividend_per_share?: number;
+          currency?: string;
+          source?: "manual" | "ngx" | "itick" | "afx";
+          notes?: string | null;
         };
         Relationships: [];
       };
@@ -790,11 +962,79 @@ export type Database = {
         };
         Relationships: [];
       };
+      v_member_unit_balances: {
+        Row: {
+          member_id: string;
+          member_number: string;
+          full_name: string;
+          email: string;
+          units_held: number;
+          total_invested: number;
+          total_units_in_issue: number;
+          ownership_pct: number;
+          current_value: number;
+          nav_per_unit: number;
+        };
+        Relationships: [];
+      };
+      v_dividend_yield: {
+        Row: {
+          holding_id: string;
+          stock_id: string;
+          ticker: string;
+          company_name: string;
+          sector: string | null;
+          quantity: number;
+          average_cost: number;
+          total_cost: number;
+          current_price: number;
+          price_date: string | null;
+          current_value: number;
+          ttm_dps: number;
+          forward_dps: number;
+          last_ex_date: string | null;
+          annual_income: number;
+          yield_pct: number;
+          forward_yield_pct: number;
+        };
+        Relationships: [];
+      };
+      v_portfolio_dividend_yield: {
+        Row: {
+          total_annual_income: number;
+          total_equity_value: number;
+          portfolio_yield_pct: number;
+        };
+        Relationships: [];
+      };
     };
     Functions: {
       create_portfolio_snapshot: {
         Args: { p_date?: string };
         Returns: string;
+      };
+      compute_and_save_fund_nav: {
+        Args: { p_date?: string };
+        Returns: Database["public"]["Tables"]["fund_nav"]["Row"];
+      };
+      price_unpriced_contributions: {
+        Args: Record<string, never>;
+        Returns: Array<{
+          contribution_id: string;
+          member_id: string;
+          amount: number;
+          dealing_nav_date: string;
+          nav_per_unit: number;
+          units_issued: number;
+        }>;
+      };
+      is_ngx_trading_day: {
+        Args: { p_date: string };
+        Returns: boolean;
+      };
+      latest_nav_date_on_or_before: {
+        Args: { p_date: string };
+        Returns: string | null;
       };
       is_admin: {
         Args: Record<string, never>;
@@ -835,3 +1075,10 @@ export type BankStatementTxn = Database["public"]["Tables"]["bank_statement_txns
 export type HoldingWithValue = Database["public"]["Views"]["v_holdings_with_value"]["Row"];
 export type PortfolioSummary = Database["public"]["Views"]["v_portfolio_summary"]["Row"];
 export type ContributionStatus = Database["public"]["Views"]["v_contribution_status"]["Row"];
+export type FundNav = Database["public"]["Tables"]["fund_nav"]["Row"];
+export type UnitTransaction = Database["public"]["Tables"]["unit_transactions"]["Row"];
+export type MutualFundValuation = Database["public"]["Tables"]["mutual_fund_valuations"]["Row"];
+export type EquityDividend = Database["public"]["Tables"]["equity_dividends"]["Row"];
+export type MemberUnitBalance = Database["public"]["Views"]["v_member_unit_balances"]["Row"];
+export type DividendYield = Database["public"]["Views"]["v_dividend_yield"]["Row"];
+export type PortfolioDividendYield = Database["public"]["Views"]["v_portfolio_dividend_yield"]["Row"];

@@ -485,11 +485,17 @@ $$;
 
 
 -- ============================================================
--- Compute today's NAV now that schema + seed are in place.
--- Cash at bank defaults to 0 until admin sets it in Settings.
--- The result primes the fund_nav table so price_unpriced_contributions
--- has a dealing NAV to use for any June-2026 contributions.
+-- Attempt to compute today's NAV.  Wrapped in a DO block so that
+-- transient failures (e.g. no stock prices yet) do NOT roll back
+-- the schema + seed data above.  Admin can click "Compute NAV"
+-- from the /nav page once prices are available.
 -- ============================================================
-SELECT public.compute_and_save_fund_nav(CURRENT_DATE);
+DO $$
+BEGIN
+  PERFORM public.compute_and_save_fund_nav(CURRENT_DATE);
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'compute_and_save_fund_nav skipped: %.  Run manually from /nav.', SQLERRM;
+END;
+$$;
 
 COMMIT;

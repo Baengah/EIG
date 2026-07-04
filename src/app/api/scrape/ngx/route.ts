@@ -37,15 +37,29 @@ export async function POST(request: Request) {
 }
 
 // ── Source URLs ───────────────────────────────────────────────────────────────
-// NGX Doclib (primary): pageSize=1000 returns all 146 equities incl. Premium Board
+// NGX Doclib Main Board (primary): 146 equities incl. Premium Board
 const NGX_EQUITIES_URL =
   "https://doclib.ngxgroup.com/REST/api/statistics/equities/" +
   "?market=&sector=&orderby=&pageSize=1000&pageNo=0";
 
-// NGX legacy (second fallback): fewer stocks, misses Premium Board intraday
+// NGX Doclib Growth Board: 9 equities (BAPLC, CHELLARAM, JULI, LIVINGTRUST,
+// MCNICHOLS, MECURE, RONCHESS, TIP, ZICHIS). Queried in parallel with Main Board.
+const NGX_GROWTH_URL =
+  "https://doclib.ngxgroup.com/REST/api/statistics/equities/" +
+  "?market=Growth%20Board&sector=&orderby=&pageSize=1000&pageNo=0";
+
+// NGX legacy (fallback): fewer stocks, misses Premium Board intraday
 const NGX_LEGACY_URL =
   "https://doclib.ngxgroup.com/REST/api/statistics/ticker" +
   "?$filter=TickerType%20eq%20%27EQUITIES%27";
+
+// Ticker alias map: NGX feed symbol → DB ticker.
+// Used when a stock trades under a different symbol on NGX than what's stored in
+// the stocks table. Confirmed aliases:
+//   TIP  = The Initiates Plc  (Growth Board; DB ticker: INITIATES)
+const NGX_TICKER_ALIAS: Record<string, string> = {
+  TIP: "INITIATES",
+};
 
 // AFX Kwayisi (third fallback): configure base URL via AFX_BASE_URL env var.
 // The endpoint should return JSON with Symbol and ClosePrice fields.
@@ -114,28 +128,11 @@ function parseRow(
   if (!ticker || ticker.length > 20) return null;
 
   const isLegacy = source === "ngx_legacy";
+  // For ngx_doclib, NGX already sets ClosePrice = PrevClosingPrice on no-trade days,
+  // so PrevClosingPrice/OpeningPrice fallbacks are not needed and could mask bad data.
   const close = isLegacy
-    ? parseNum(
-        pick(
-          row,
-          "Value",
-          "ClosePrice",
-          "ClosingPrice",
-          "Close",
-          "LastTradedPrice",
-        ),
-      )
-    : parseNum(
-        pick(
-          row,
-          "ClosePrice",
-          "ClosingPrice",
-          "Close",
-          "LastTradedPrice",
-          "PrevClosingPrice",
-          "OpeningPrice",
-        ),
-      );
+    ? parseNum(pick(row, "Value", "ClosePrice", "ClosingPrice", "Close", "LastTradedPrice"))
+    : parseNum(pick(row, "ClosePrice", "ClosingPrice", "Close", "LastTradedPrice"));
   if (!close || close <= 0) return null;
 
   const rowDate = pick(row, "TradeDate", "Date", "TradingDate");
@@ -202,8 +199,17 @@ async function scrapeNGX() {
   const supabase = await createServiceClient();
   const today = new Date().toISOString().split("T")[0];
 
-  // ── 1. Fetch prices (NGX Doclib → NGX Legacy → AFX Kwayisi) ──────────────
-  let rows = await fetchRows(NGX_EQUITIES_URL, today, "ngx_doclib");
+  // ── 1. Fetch prices (NGX Doclib Main+Growth → NGX Legacy → AFX Kwayisi) ───
+  // Main Board and Growth Board are fetched in parallel then merged.
+  const [mainRows, growthRows] = await Promise.all([
+    fetchRows(NGX_EQUITIES_URL, today, "ngx_doclib"),
+    fetchRows(NGX_GROWTH_URL,   today, "ngx_doclib"),
+  ]);
+
+  let rows: PriceRow[] | null =
+    (mainRows?.length ?? 0) > 0 || (growthRows?.length ?? 0) > 0
+      ? [...(mainRows ?? []), ...(growthRows ?? [])]
+      : null;
 
   if (!rows || rows.length === 0) {
     rows = await fetchRows(NGX_LEGACY_URL, today, "ngx_legacy");
@@ -224,7 +230,21 @@ async function scrapeNGX() {
     };
   }
 
-  const priceMap = new Map(rows.map((r) => [r.ticker, r]));
+  // Apply ticker alias map: remap NGX feed symbols to DB ticker names.
+  for (const row of rows) {
+    const alias = NGX_TICKER_ALIAS[row.ticker];
+    if (alias) row.ticker = alias;
+  }
+
+  // Last-write-wins: if two rows map to the same DB ticker, keep the one with
+  // a non-null close (prefer the aliased/remapped entry).
+  const priceMap = new Map<string, PriceRow>();
+  for (const row of rows) {
+    const existing = priceMap.get(row.ticker);
+    if (!existing || (existing.close === null && row.close !== null)) {
+      priceMap.set(row.ticker, row);
+    }
+  }
 
   // ── 2. Build DB ticker → stock ID map ────────────────────────────────────
   const { data: stocks } = await supabase

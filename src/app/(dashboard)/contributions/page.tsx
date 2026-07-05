@@ -9,8 +9,8 @@ import { RecordContributionButton } from "@/components/contributions/RecordContr
 import { AddBankEntryButton } from "@/components/contributions/AddBankEntryButton";
 import { MemberCard } from "@/components/contributions/MemberCard";
 import {
-  computeNavAtDate, computeMonthlyReturns, monthEnd,
-  BASELINE_NAV, type NavRawData,
+  computeCurrentNav, sumLatestFundVals,
+  BASELINE_NAV, type MonthlyReturn,
 } from "@/lib/navEngine";
 
 export const revalidate = 60;
@@ -23,7 +23,7 @@ export default async function ContributionsPage() {
   const [
     membersRes, contribsRes, summaryRes, brokersRes,
     ledgerRes, dividendsRes, profileRes,
-    unitBalancesRes, fundValsRes, unitTxnsRes, allTxnsRes,
+    unitBalancesRes, fundValsRes, unitTxnsRes,
   ] = await Promise.all([
     svc.from("members")
       .select("id, full_name, member_number, email, phone, bank_name, bank_account_number, is_active, join_date")
@@ -41,77 +41,38 @@ export default async function ContributionsPage() {
     svc.from("v_member_unit_balances").select("*"),
     svc.from("mutual_fund_valuations").select("fund_name, valuation_date, value"),
     svc.from("unit_transactions").select("txn_date, units"),
-    svc.from("transactions")
-      .select("transaction_date, transaction_type, stock_id, quantity, net_amount")
-      .order("transaction_date", { ascending: false }),
   ]);
 
-  const members     = membersRes.data ?? [];
-  const contribs    = contribsRes.data ?? [];
-  const summary     = summaryRes.data;
-  const brokers     = brokersRes.data ?? [];
-  const ledger      = ledgerRes.data ?? [];
-  const dividends   = dividendsRes.data ?? [];
-  const isAdmin     = profileRes?.data?.role === "admin";
+  const members      = membersRes.data ?? [];
+  const contribs     = contribsRes.data ?? [];
+  const summary      = summaryRes.data;
+  const brokers      = brokersRes.data ?? [];
+  const ledger       = ledgerRes.data ?? [];
+  const dividends    = dividendsRes.data ?? [];
+  const isAdmin      = profileRes?.data?.role === "admin";
   const unitBalances = unitBalancesRes.data ?? [];
-  const allTxns     = allTxnsRes.data ?? [];
 
-  // ── Round 2: stock prices (needs stock_ids from transactions) ──────
-  const stockIds = Array.from(new Set(allTxns.filter(t => t.stock_id).map(t => t.stock_id!)));
-  const stockPricesRes = stockIds.length > 0
-    ? await svc.from("stock_prices")
-        .select("stock_id, price_date, closing_price")
-        .in("stock_id", stockIds)
-        .gte("price_date", "2026-05-01")
-    : { data: [] as { stock_id: string; price_date: string; closing_price: number }[] };
+  // ── Derived NAV (direct asset-value formula — no stock price reconstruction) ──
+  // stock_equity: v_portfolio_summary (same source as the P&L banner below)
+  // CHD_funds:    latest mutual_fund_valuations per fund
+  // broker_cash:  broker_accounts.cash_balance (admin-maintained; negative after overdraft)
+  // dividends:    sum of dividend receipts — proxy for Zenith bank cash balance
+  const stockEquity   = summary?.total_value ?? 0;
+  const fundVals      = (fundValsRes.data ?? []).map(v => ({
+    fund_name: v.fund_name, valuation_date: v.valuation_date, value: Number(v.value),
+  }));
+  const CHDTotal      = sumLatestFundVals(fundVals);
+  const brokerCash    = brokers.reduce((s, b) => s + Number(b.cash_balance ?? 0), 0);
+  const dividendsCash = dividends.reduce((s, d) => s + Number(d.net_amount ?? 0), 0);
+  const totalUnits    = (unitTxnsRes.data ?? []).reduce((s, t) => s + Number(t.units), 0);
 
-  // ── Build NavRawData ───────────────────────────────────────────────
-  const navData: NavRawData = {
-    stockPrices: (stockPricesRes.data ?? []).map(p => ({
-      stock_id: p.stock_id,
-      price_date: p.price_date,
-      closing_price: Number(p.closing_price),
-    })),
-    fundVals: (fundValsRes.data ?? []).map(v => ({
-      fund_name: v.fund_name,
-      valuation_date: v.valuation_date,
-      value: Number(v.value),
-    })),
-    unitTxns: (unitTxnsRes.data ?? []).map(t => ({
-      txn_date: t.txn_date,
-      units: Number(t.units),
-    })),
-    portfolioTxns: allTxns.map(t => ({
-      transaction_date: t.transaction_date,
-      transaction_type: t.transaction_type,
-      stock_id: t.stock_id ?? null,
-      quantity: t.quantity ?? null,
-      net_amount: t.net_amount ?? null,
-    })),
-    contributions: contribs.map(c => ({
-      contribution_date: c.contribution_date,
-      amount: Number(c.amount),
-    })),
-    bankLedger: ledger.map(e => ({
-      entry_date: e.entry_date,
-      amount: Number(e.amount),
-      category: e.category,
-    })),
-  };
+  const navToday = computeCurrentNav(stockEquity, CHDTotal, brokerCash, dividendsCash, totalUnits);
 
-  // ── Derived NAV + returns ──────────────────────────────────────────
-  const today     = new Date();
-  const todayStr  = today.toISOString().split("T")[0];
-  const mtdRefStr = monthEnd(today.getFullYear(), today.getMonth()); // end of prev month
-
-  const navToday  = computeNavAtDate(todayStr, navData);
-  const navMtdRef = computeNavAtDate(mtdRefStr, navData);
-  const monthlyReturns = computeMonthlyReturns(today, navData);
-
-  const fundMtdPct = navToday !== null && navMtdRef !== null && navMtdRef > 0
-    ? ((navToday - navMtdRef) / navMtdRef) * 100 : null;
+  // MTD requires a stored June-end NAV — not available yet.
+  const fundMtdPct    = null as number | null;
   const fundInceptionPct = navToday !== null
     ? ((navToday - BASELINE_NAV) / BASELINE_NAV) * 100 : null;
+  const monthlyReturns: MonthlyReturn[] = [];
 
   // ── Aggregate metrics ──────────────────────────────────────────────
   const memberMap    = new Map(members.map(m => [m.id, m]));
@@ -154,14 +115,14 @@ export default async function ContributionsPage() {
       const member          = memberMap.get(memberId);
       const totalContributed = memberTotals.get(memberId) ?? 0;
       const unitBalance     = unitBalanceMap.get(memberId);
-      const unitsHeld       = Number(unitBalance?.units_held ?? 0);
-      const ownershipPct    = Number(unitBalance?.ownership_pct ?? 0);
-      const currentMemberValue = Number(unitBalance?.current_value ?? 0);
+      const unitsHeld          = Number(unitBalance?.units_held ?? 0);
+      const ownershipPct       = Number(unitBalance?.ownership_pct ?? 0);
+      // Use live NAV (not the stale ₦100 stored in fund_nav → current_value)
+      const currentMemberValue = navToday !== null ? unitsHeld * navToday : 0;
 
       const inceptionNaira = navToday !== null
         ? unitsHeld * (navToday - BASELINE_NAV) : null;
-      const mtdNaira = navToday !== null && navMtdRef !== null
-        ? unitsHeld * (navToday - navMtdRef) : null;
+      const mtdNaira = null as number | null; // needs a stored June-end NAV
 
       const memberContribs = contribs
         .filter(c => c.member_id === memberId)

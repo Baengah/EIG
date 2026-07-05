@@ -8,8 +8,8 @@ import {
 import Link from "next/link";
 import { PortfolioChart } from "@/components/dashboard/PortfolioChart";
 import {
-  computeNavAtDate, computeMonthlyReturns, monthEnd,
-  BASELINE_NAV, type NavRawData,
+  computeCurrentNav, sumLatestFundVals, monthEnd,
+  BASELINE_NAV,
 } from "@/lib/navEngine";
 
 export const revalidate = 300;
@@ -31,7 +31,7 @@ async function getDashboardData() {
   const [
     summaryRes, snapshotRes, holdingsRes,
     allTxnsRes, ledgerRes, activeMembersRes,
-    allContribsRes, periodRes, fundValsRes, unitTxnsRes,
+    allContribsRes, periodRes, fundValsRes, unitTxnsRes, brokersRes,
   ] = await Promise.all([
     supabase.from("v_portfolio_summary").select("*").single(),
     supabase.from("portfolio_snapshots")
@@ -54,23 +54,17 @@ async function getDashboardData() {
       .limit(1).single(),
     svc.from("mutual_fund_valuations").select("fund_name, valuation_date, value"),
     svc.from("unit_transactions").select("txn_date, units"),
+    svc.from("broker_accounts").select("cash_balance").eq("is_active", true),
   ]);
 
   const allTxns    = allTxnsRes.data ?? [];
   const recentFive = allTxns.slice(0, 5);
 
-  // ── Round 2: stock prices + name lookups (sequential on txn ids) ───
-  const stockIds       = Array.from(new Set(allTxns.filter(t => t.stock_id).map(t => t.stock_id!)));
+  // ── Round 2: name lookups for recent transactions only ─────────────
   const recentStockIds = Array.from(new Set(recentFive.filter(t => t.stock_id).map(t => t.stock_id!)));
   const recentFundIds  = Array.from(new Set(recentFive.filter(t => t.mutual_fund_id).map(t => t.mutual_fund_id!)));
 
-  const [stockPricesRes, stockNamesRes, fundNamesRes] = await Promise.all([
-    stockIds.length > 0
-      ? svc.from("stock_prices")
-          .select("stock_id, price_date, closing_price")
-          .in("stock_id", stockIds)
-          .gte("price_date", "2026-05-01")
-      : Promise.resolve({ data: [] as { stock_id: string; price_date: string; closing_price: number }[] }),
+  const [stockNamesRes, fundNamesRes] = await Promise.all([
     recentStockIds.length > 0
       ? supabase.from("stocks").select("id, ticker, company_name").in("id", recentStockIds)
       : Promise.resolve({ data: [] as { id: string; ticker: string; company_name: string }[] }),
@@ -79,62 +73,38 @@ async function getDashboardData() {
       : Promise.resolve({ data: [] as { id: string; fund_name: string }[] }),
   ]);
 
-  // ── Build NavRawData ───────────────────────────────────────────────
-  const navData: NavRawData = {
-    stockPrices: (stockPricesRes.data ?? []).map(p => ({
-      stock_id: p.stock_id,
-      price_date: p.price_date,
-      closing_price: Number(p.closing_price),
-    })),
-    fundVals: (fundValsRes.data ?? []).map(v => ({
-      fund_name: v.fund_name,
-      valuation_date: v.valuation_date,
-      value: Number(v.value),
-    })),
-    unitTxns: (unitTxnsRes.data ?? []).map(t => ({
-      txn_date: t.txn_date,
-      units: Number(t.units),
-    })),
-    portfolioTxns: allTxns.map(t => ({
-      transaction_date: t.transaction_date,
-      transaction_type: t.transaction_type,
-      stock_id: t.stock_id ?? null,
-      quantity: t.quantity ?? null,
-      net_amount: t.net_amount ?? null,
-    })),
-    contributions: (allContribsRes.data ?? []).map(c => ({
-      contribution_date: c.contribution_date,
-      amount: Number(c.amount),
-    })),
-    bankLedger: (ledgerRes.data ?? []).map(e => ({
-      entry_date: e.entry_date,
-      amount: Number(e.amount),
-      category: e.category,
-    })),
-  };
+  // ── Derived NAV (direct asset-value formula) ───────────────────────
+  // stock_equity: v_portfolio_summary (holdings × current prices) — same source as P&L banner
+  // CHD_funds:    latest mutual_fund_valuations per fund
+  // broker_cash:  broker_accounts.cash_balance (admin-maintained; can be negative post-settlement)
+  // dividends:    sum of dividend receipts — proxy for Zenith bank cash balance
+  const stockEquity   = summaryRes.data?.total_value ?? 0;
+  const fundVals      = (fundValsRes.data ?? []).map(v => ({
+    fund_name: v.fund_name, valuation_date: v.valuation_date, value: Number(v.value),
+  }));
+  const CHDTotal      = sumLatestFundVals(fundVals);
+  const brokerCash    = (brokersRes.data ?? []).reduce((s, b) => s + Number(b.cash_balance ?? 0), 0);
+  const dividendsCash = allTxns
+    .filter(t => t.transaction_type === "dividend")
+    .reduce((s, t) => s + Number(t.net_amount ?? 0), 0);
+  const totalUnits    = (unitTxnsRes.data ?? []).reduce((s, t) => s + Number(t.units), 0);
 
-  // ── Derived NAV + return metrics ───────────────────────────────────
-  const today      = new Date();
-  const todayStr   = today.toISOString().split("T")[0];
-  const mtdRefStr  = monthEnd(today.getFullYear(), today.getMonth()); // end of prev month
-  const ytdRefStr  = `${today.getFullYear() - 1}-12-31`;             // Dec 31 last year
+  const navToday = computeCurrentNav(stockEquity, CHDTotal, brokerCash, dividendsCash, totalUnits);
 
-  const navToday  = computeNavAtDate(todayStr, navData);
-  const navMtdRef = computeNavAtDate(mtdRefStr, navData); // ≤ baseline → returns ₦100
-
-  // YTD ref is before fund inception, so computeNavAtDate returns BASELINE_NAV (₦100)
-  const navYtdRef = computeNavAtDate(ytdRefStr, navData);
+  // MTD / YTD require a stored period-end NAV — not available yet.
+  // Inception is the only reliable metric: how much has NAV grown since the ₦100 par baseline.
+  const today    = new Date();
+  const todayStr = today.toISOString().split("T")[0];
 
   const returns = {
-    mtd:       navToday !== null && navMtdRef !== null && navMtdRef > 0
-               ? ((navToday - navMtdRef) / navMtdRef) * 100 : null,
-    ytd:       navToday !== null && navYtdRef !== null && navYtdRef > 0
-               ? ((navToday - navYtdRef) / navYtdRef) * 100 : null,
-    inception: navToday !== null
-               ? ((navToday - BASELINE_NAV) / BASELINE_NAV) * 100 : null,
+    mtd:       null as number | null,   // needs stored June-end NAV snapshot
+    ytd:       null as number | null,   // fund started June 2026, pre-Jan baseline irrelevant
+    inception: navToday !== null ? ((navToday - BASELINE_NAV) / BASELINE_NAV) * 100 : null,
   };
 
-  const monthlyReturns = computeMonthlyReturns(today, navData);
+  const monthlyReturns: import("@/lib/navEngine").MonthlyReturn[] = [];
+  // Monthly period returns require stored per-end NAVs (compute_and_save_fund_nav() run regularly).
+  // Until those are in fund_nav, we suppress the table to avoid misleading numbers.
 
   // ── Aggregate metrics ──────────────────────────────────────────────
   const allContribs      = allContribsRes.data ?? [];
@@ -146,7 +116,11 @@ async function getDashboardData() {
     .reduce((s, t) => s + Number(t.net_amount ?? 0), 0);
   const unrealizedGain   = summary?.total_unrealized_gain_loss ?? 0;
 
-  const ledger = navData.bankLedger;
+  const ledger = (ledgerRes.data ?? []).map(e => ({
+    entry_date: e.entry_date,
+    amount: Number(e.amount),
+    category: e.category,
+  }));
   const bankCharges  = ledger.filter(e => e.amount < 0 && e.category === "bank_charge")
     .reduce((s, e) => s + Math.abs(e.amount), 0);
   const bankTaxes    = ledger.filter(e => e.amount < 0 && e.category === "tax")

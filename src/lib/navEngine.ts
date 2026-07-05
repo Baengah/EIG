@@ -3,28 +3,26 @@
  * fund_nav records (which used current-date bank balances and all-time units,
  * causing historical NAV distortion on unit-issuance dates).
  *
- * Formula:
- *   Total Fund Value = stock_equity + CHD_funds + total_liquid_cash
- *   NAV per unit     = Total Fund Value / units_at_date
+ * Formula (baseline-anchored to avoid double-counting CHD fund subscriptions):
  *
- * Total liquid cash (bank + broker combined):
- *   = member contributions received up to date
- *   + dividends received from portfolio transactions
- *   + stock/fund sale proceeds
- *   - stock/fund purchase costs
- *   + net bank income/charges (excluding internal broker↔bank transfers)
+ *   total_fund_value_d = stockEquity_d + CHD_d + cash_d
  *
- * broker_transfer bank_ledger entries are excluded because they move cash
- * between the bank account and the broker account but don't change total
- * cash held by the fund.
+ *   cash_d = baseline_cash + changes_since_baseline
+ *   baseline_cash = BASELINE_TOTAL − stockEquity_baseline − CHD_baseline
  *
- * Units at date: SUM(unit_transactions.units WHERE txn_date <= date)
- * This is the key fix — the stored fund_nav.units_in_issue used the
- * all-time total (including future issuances), diluting historical NAVs.
+ * Why baseline-anchored?
+ *   Some contributions went directly to CHD broker (bypassing Zenith bank) to
+ *   fund the Paramount Fund initial subscription. These appear in
+ *   member_contributions but have no corresponding buy transaction in the
+ *   transactions table (only exchange-traded contract notes are there). Adding
+ *   ALL contributions to total_liquid AND the CHD fund's current value would
+ *   double-count those direct-to-CHD amounts. Anchoring to the known May-31
+ *   baseline total sidesteps the issue entirely: baseline_cash implicitly
+ *   absorbs all prior cash flows, and we only track incremental changes.
  */
 
-export const BASELINE_DATE = "2026-05-31";
-export const BASELINE_NAV  = 100.0; // ₦100/unit par value at fund inception
+export const BASELINE_DATE  = "2026-05-31";
+export const BASELINE_NAV   = 100.0; // ₦100/unit par value at fund inception
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -76,9 +74,43 @@ function buildPriceIdx(prices: StockPrice[]): Map<string, StockPrice[]> {
     arr.push(p);
     idx.set(p.stock_id, arr);
   }
-  // Sort descending by date so we can use .find(p => p.price_date <= date)
+  // Sort descending by date so .find(p => p.price_date <= date) picks most-recent
   idx.forEach(arr => arr.sort((a, b) => b.price_date.localeCompare(a.price_date)));
   return idx;
+}
+
+/** Reconstruct stock equity (₦) from trade history valued at prices ≤ date. */
+function computeStockEquity(date: string, data: NavRawData): number {
+  const holdingsMap = new Map<string, number>();
+  for (const txn of data.portfolioTxns) {
+    if (txn.transaction_date > date || !txn.stock_id) continue;
+    const delta = txn.transaction_type === "sell"
+      ? -(txn.quantity ?? 0)
+      :  (txn.quantity ?? 0);
+    holdingsMap.set(txn.stock_id, (holdingsMap.get(txn.stock_id) ?? 0) + delta);
+  }
+  const priceIdx = buildPriceIdx(data.stockPrices);
+  let equity = 0;
+  for (const [sid, qty] of Array.from(holdingsMap.entries())) {
+    if (qty <= 0) continue;
+    const price = (priceIdx.get(sid) ?? []).find(p => p.price_date <= date)?.closing_price ?? 0;
+    equity += qty * price;
+  }
+  return equity;
+}
+
+/** Latest CHD fund valuation on or before date; 0 if none available. */
+function latestFundValAt(name: string, date: string, data: NavRawData): number {
+  return [...data.fundVals]
+    .filter(v => v.fund_name === name && v.valuation_date <= date)
+    .sort((a, b) => b.valuation_date.localeCompare(a.valuation_date))[0]?.value ?? 0;
+}
+
+/** Earliest CHD fund valuation across all dates (used as baseline proxy). */
+function earliestFundVal(name: string, data: NavRawData): number {
+  return [...data.fundVals]
+    .filter(v => v.fund_name === name)
+    .sort((a, b) => a.valuation_date.localeCompare(b.valuation_date))[0]?.value ?? 0;
 }
 
 // ── Core computation ──────────────────────────────────────────────────────────
@@ -91,44 +123,46 @@ function buildPriceIdx(prices: StockPrice[]): Map<string, StockPrice[]> {
 export function computeNavAtDate(date: string, data: NavRawData): number | null {
   if (date <= BASELINE_DATE) return BASELINE_NAV;
 
-  // 1. Units in issue — only transactions up to (and including) this date
+  // ── Units in issue ─────────────────────────────────────────────────
   const units = data.unitTxns
     .filter(t => t.txn_date <= date)
     .reduce((s, t) => s + Number(t.units), 0);
   if (units <= 0) return null;
 
-  // 2. Stock equity — reconstruct holdings from trade history, then price them
-  const holdingsMap = new Map<string, number>();
-  for (const txn of data.portfolioTxns) {
-    if (txn.transaction_date > date || !txn.stock_id) continue;
-    const delta = txn.transaction_type === "sell"
-      ? -(txn.quantity ?? 0)
-      :  (txn.quantity ?? 0);
-    holdingsMap.set(txn.stock_id, (holdingsMap.get(txn.stock_id) ?? 0) + delta);
-  }
-  const priceIdx = buildPriceIdx(data.stockPrices);
-  let stockEquity = 0;
-  for (const [sid, qty] of Array.from(holdingsMap.entries())) {
-    if (qty <= 0) continue;
-    const price = (priceIdx.get(sid) ?? []).find(p => p.price_date <= date)?.closing_price ?? 0;
-    stockEquity += qty * price;
-  }
+  // ── Known baseline total fund value ────────────────────────────────
+  // Derived from the immutable 31-May-2026 seed: ₦100/unit × baseline units.
+  // All contributions, investments, and cash flows up to baseline are
+  // embedded in this single number — no need to re-derive them.
+  const baselineUnits = data.unitTxns
+    .filter(t => t.txn_date <= BASELINE_DATE)
+    .reduce((s, t) => s + Number(t.units), 0);
+  const BASELINE_TOTAL = BASELINE_NAV * baselineUnits; // ₦15,102,198
 
-  // 3. CHD mutual fund values — latest available valuation on or before date
-  const latestFundVal = (name: string): number =>
-    [...data.fundVals]
-      .filter(v => v.fund_name === name && v.valuation_date <= date)
-      .sort((a, b) => b.valuation_date.localeCompare(a.valuation_date))[0]?.value ?? 0;
-  const mmf   = latestFundVal("CHD Money Market Fund");
-  const param = latestFundVal("CHD Paramount Fund");
+  // ── Stock equity ───────────────────────────────────────────────────
+  const stockEquity_0 = computeStockEquity(BASELINE_DATE, data);
+  const stockEquity_d = computeStockEquity(date, data);
 
-  // 4. Total liquid cash (bank + broker combined)
-  const contribCash = data.contributions
-    .filter(c => c.contribution_date <= date)
+  // ── CHD mutual fund values ─────────────────────────────────────────
+  // Baseline: earliest available valuation (Jun-16 entry, proxy for May-31).
+  // Current:  latest valuation on or before target date.
+  // When only one valuation entry exists, CHD_0 and CHD_d are equal and
+  // cancel out in the formula — correctly reducing to price-change + cash-changes.
+  const CHD_0 = earliestFundVal("CHD Money Market Fund", data)
+              + earliestFundVal("CHD Paramount Fund", data);
+  const CHD_d = latestFundValAt("CHD Money Market Fund", date, data)
+              + latestFundValAt("CHD Paramount Fund", date, data);
+
+  // ── Baseline cash (implicitly correct — no double-counting risk) ───
+  const cash_0 = BASELINE_TOTAL - stockEquity_0 - CHD_0;
+
+  // ── Incremental cash changes since baseline only ────────────────────
+  // Using > BASELINE_DATE (not >=) ensures baseline entries aren't counted.
+  const newContribs = data.contributions
+    .filter(c => c.contribution_date > BASELINE_DATE && c.contribution_date <= date)
     .reduce((s, c) => s + Number(c.amount), 0);
 
-  const txnCash = data.portfolioTxns
-    .filter(t => t.transaction_date <= date)
+  const txnChanges = data.portfolioTxns
+    .filter(t => t.transaction_date > BASELINE_DATE && t.transaction_date <= date)
     .reduce((s, t) => {
       const amt = Number(t.net_amount ?? 0);
       if (t.transaction_type === "buy" || t.transaction_type === "rights_issue") return s - amt;
@@ -136,12 +170,13 @@ export function computeNavAtDate(date: string, data: NavRawData): number | null 
       return s;
     }, 0);
 
-  // Exclude broker_transfer entries — they're internal bank↔broker movements
-  const bankCash = data.bankLedger
-    .filter(e => e.entry_date <= date && e.category !== "broker_transfer")
+  // Exclude broker_transfer — internal bank↔broker movements don't change total cash.
+  // Only non-broker entries (interest, charges, taxes) affect total fund value.
+  const bankChanges = data.bankLedger
+    .filter(e => e.entry_date > BASELINE_DATE && e.entry_date <= date && e.category !== "broker_transfer")
     .reduce((s, e) => s + Number(e.amount), 0);
 
-  const totalFundValue = stockEquity + mmf + param + contribCash + txnCash + bankCash;
+  const totalFundValue = stockEquity_d + CHD_d + cash_0 + newContribs + txnChanges + bankChanges;
   return totalFundValue / units;
 }
 

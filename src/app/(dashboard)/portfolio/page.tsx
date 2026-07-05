@@ -336,7 +336,9 @@ export default async function PortfolioPage({
                 </div>
                 <span className="text-xs text-muted-foreground">{navHistory.length} data points</span>
               </div>
-              <NavHistoryChart data={navHistory} />
+              <div className="w-full" style={{ minHeight: 220 }}>
+                <NavHistoryChart data={navHistory} />
+              </div>
             </div>
 
             {latestNav && (

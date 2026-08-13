@@ -91,6 +91,16 @@ async function getDashboardData() {
 
   const navToday = computeCurrentNav(stockEquity, CHDTotal, brokerCash, dividendsCash, totalUnits);
 
+  // ── Daily change (latest snapshot vs prior trading day) ────────────
+  const snapshots = snapshotRes.data ?? [];
+  const [latestSnap, prevSnap] = snapshots;
+  const dailyChange = (latestSnap && prevSnap)
+    ? Number(latestSnap.total_value) - Number(prevSnap.total_value)
+    : null;
+  const dailyChangePercent = (dailyChange !== null && Number(prevSnap.total_value) !== 0)
+    ? (dailyChange / Number(prevSnap.total_value)) * 100
+    : null;
+
   // MTD / YTD require a stored period-end NAV — not available yet.
   // Inception is the only reliable metric: how much has NAV grown since the ₦100 par baseline.
   const today    = new Date();
@@ -143,7 +153,11 @@ async function getDashboardData() {
 
   return {
     summary,
-    snapshots:    snapshotRes.data ?? [],
+    snapshots,
+    dailyChange,
+    dailyChangePercent,
+    dailyChangeDate:     latestSnap?.snapshot_date ?? null,
+    dailyChangePrevDate: prevSnap?.snapshot_date ?? null,
     returns,
     monthlyReturns,
     navToday,
@@ -165,7 +179,8 @@ async function getDashboardData() {
 
 export default async function DashboardPage() {
   const {
-    summary, snapshots, returns, monthlyReturns, navToday, navDate,
+    summary, snapshots, dailyChange, dailyChangePercent, dailyChangeDate, dailyChangePrevDate,
+    returns, monthlyReturns, navToday, navDate,
     totalContributions, totalDividends, unrealizedGain,
     bankCharges, bankTaxes, totalInvFees,
     bestStocks, worstStocks, recentTxns, topHoldings,
@@ -190,7 +205,7 @@ export default async function DashboardPage() {
       <div className="p-4 sm:p-6 space-y-6">
 
         {/* ── Headline stats ──────────────────────────────────────── */}
-        <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
           <div className="bg-card rounded-xl border border-border p-5">
             <div className="flex items-start justify-between mb-3">
               <p className="text-sm font-medium text-muted-foreground">Portfolio Value</p>
@@ -202,6 +217,30 @@ export default async function DashboardPage() {
             <p className={`text-xs mt-1 font-medium flex items-center gap-0.5 ${positive ? "text-gain" : "text-loss"}`}>
               {positive ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
               {formatPercent(gainLossPct)} unrealized
+            </p>
+          </div>
+          <div className="bg-card rounded-xl border border-border p-5">
+            <div className="flex items-start justify-between mb-3">
+              <p className="text-sm font-medium text-muted-foreground">Today&apos;s Change</p>
+              <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${
+                dailyChange === null ? "bg-muted" : dailyChange >= 0 ? "bg-emerald-50 dark:bg-emerald-950" : "bg-rose-50 dark:bg-rose-950"
+              }`}>
+                {dailyChange === null || dailyChange >= 0
+                  ? <TrendingUp className={`w-4 h-4 ${dailyChange === null ? "text-muted-foreground" : "text-gain"}`} />
+                  : <TrendingDown className="w-4 h-4 text-loss" />}
+              </div>
+            </div>
+            <p className={`text-2xl font-bold ${dailyChange === null ? "text-foreground" : dailyChange >= 0 ? "text-gain" : "text-loss"}`}>
+              {dailyChange !== null ? `${dailyChange >= 0 ? "+" : ""}${formatCurrency(dailyChange)}` : "—"}
+            </p>
+            <p className="text-xs mt-1 font-medium text-muted-foreground">
+              {dailyChangePercent !== null
+                ? <span className={dailyChangePercent >= 0 ? "text-gain" : "text-loss"}>{formatPercent(dailyChangePercent)}</span>
+                : null}
+              {" "}
+              {dailyChangeDate && dailyChangePrevDate
+                ? `${new Date(dailyChangePrevDate).toLocaleDateString("en-NG", { day: "2-digit", month: "short" })} → ${new Date(dailyChangeDate).toLocaleDateString("en-NG", { day: "2-digit", month: "short" })}`
+                : "Not enough snapshots yet"}
             </p>
           </div>
           <div className="bg-card rounded-xl border border-border p-5">

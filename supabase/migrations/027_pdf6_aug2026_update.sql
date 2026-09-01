@@ -95,7 +95,7 @@ WHERE NOT EXISTS (
 -- ============================================================
 
 INSERT INTO public.bank_ledger (entry_date, description, amount, category)
-SELECT v.dt, v.desc, v.amt, v.cat
+SELECT v.dt, v.ledger_desc, v.amt, v.cat
 FROM (VALUES
   -- Broker transfers + fees
   ('2026-05-07'::date, 'Transfer to CHD — Chapel Hill Denham', -400000.00, 'broker_transfer'),
@@ -130,11 +130,11 @@ FROM (VALUES
   ('2026-06-30'::date, 'State Withholding Tax — Jun 2026',       -87.32, 'tax'),
   ('2026-07-31'::date, 'Capitalised Interest — Jul 2026',        762.71, 'interest_income'),
   ('2026-07-31'::date, 'State Withholding Tax — Jul 2026',       -76.27, 'tax')
-) AS v(dt, desc, amt, cat)
+) AS v(dt, ledger_desc, amt, cat)
 WHERE NOT EXISTS (
   SELECT 1 FROM public.bank_ledger bl
   WHERE bl.entry_date   = v.dt
-    AND bl.description  = v.desc
+    AND bl.description  = v.ledger_desc
     AND bl.amount       = v.amt
 );
 
